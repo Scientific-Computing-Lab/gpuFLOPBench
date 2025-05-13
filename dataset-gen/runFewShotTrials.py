@@ -62,8 +62,8 @@ async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=F
                 api_key=OPENROUTER_API_KEY,
                 timeout=timeout,
                 # comment these back in for the non-reasoning models
-                top_p = topp,
-                temperature=temp,
+                #top_p = topp,
+                #temperature=temp,
                 **logprob_args,
                 model_info = {'vision':False, 'function_calling':True, 'json_output':False, 'family':'unknown'}
         )
