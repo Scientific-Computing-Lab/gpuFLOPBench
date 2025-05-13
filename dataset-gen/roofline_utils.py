@@ -29,6 +29,9 @@ from sklearn.model_selection import train_test_split
 
 import asyncio
 
+from tree_sitter import Language, Parser
+import tree_sitter_cuda
+
 print(f"Autogen version: {autogen_core.__version__}")
 
 # GPU specs
@@ -108,7 +111,7 @@ print('scraped and pruned OMP  programs count', len(scrapedOMP))
 # the kernelName should be the 'kernelName' from the roofline data dataframe
 # FUTURE NOTE: we need to change the simpleScrapeKernels script to emit a JSON dictionary
 # instead of a JSON list -- so we don't have to search it each time.
-def get_sass_and_source_from_scraped_codes(targetName, kernelName):
+def get_sass_and_source_from_scraped_codes(targetName, kernelName, include_comments=True):
 
   kernelSASS = ''
   kernelSource = ''
@@ -131,11 +134,77 @@ def get_sass_and_source_from_scraped_codes(targetName, kernelName):
           kernelSource = elem['kernels'][k]
           break
 
+      # if we want to drop the comments from the kernel source
+      if not include_comments:
+        # use tree-sitter
+        # because we're doing comment removal, we can use the CUDA parser on OpenMP code
+        # and it shouldn't have any issues
+        kernelSource = remove_comments_cuda(kernelSource)
+
       break
 
   return (kernelSASS, kernelSource)
 
 
+# Load the CUDA language from the built shared library
+#CUDA_LANGUAGE = Language('/Users/gbolet/miniconda3/envs/hecbench-roofline/lib/python3.11/site-packages/tree_sitter_cuda/_binding.abi3.so')
+CUDA_LANGUAGE = Language(tree_sitter_cuda.language())
+
+def remove_comments_cuda(code):
+    """
+    Remove all comments from a CUDA code string using Tree-sitter.
+    
+    Args:
+        code (str): CUDA source code.
+
+    Returns:
+        str: Code with all comments removed.
+    """
+
+    # if we're given the empty string, just return it
+    if code == '':
+       return code
+
+    parser = Parser(CUDA_LANGUAGE)
+    tree = parser.parse(bytes(code, 'utf8'))
+    root_node = tree.root_node
+
+    #print('BEFORE CODE START')
+    #print(code)
+    #print('BEFORE CODE END')
+
+    # Create a query to match comment nodes (node type "comment" is used)
+    query = CUDA_LANGUAGE.query('(comment) @comment')
+
+    captures_dict = query.captures(root_node)
+
+    # some codes have no comments, so the 'comment' key wont exist
+    if 'comment' not in list(captures_dict.keys()):
+      return code
+
+    captures = captures_dict['comment']
+
+    #print(type(captures))
+    #print(captures[0])
+    #print(captures.keys())
+
+    # Gather byte spans for all comment nodes
+    comment_spans = [(node.start_byte, node.end_byte) for node in captures]
+    comment_spans.sort()
+
+    # Reconstruct the code without the comment ranges
+    result = []
+    last_index = 0
+    for start, end in comment_spans:
+        result.append(code[last_index:start])
+        last_index = end
+    result.append(code[last_index:])
+
+    new_code = ''.join(result)
+    #print('NEW CODE START')
+    #print(new_code)
+    #print('NEW CODE END')
+    return new_code
 
 
 dtypes={'Kernel Name':'string', 

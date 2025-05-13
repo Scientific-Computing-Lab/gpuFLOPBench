@@ -61,8 +61,9 @@ async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=F
                 base_url='https://openrouter.ai/api/v1',
                 api_key=OPENROUTER_API_KEY,
                 timeout=timeout,
-                #top_p = topp,
-                #temperature=temp,
+                # comment these back in for the non-reasoning models
+                top_p = topp,
+                temperature=temp,
                 **logprob_args,
                 model_info = {'vision':False, 'function_calling':True, 'json_output':False, 'family':'unknown'}
         )
@@ -253,6 +254,7 @@ async def main():
     parser.add_argument('--useAzure', action='store_true', default=False, help='Flag to use Azure')
     parser.add_argument('--useSASS', action='store_true', default=False, help='Use SASS code instead of source')
     parser.add_argument('--includeLogProbs', action='store_true', default=False, help='Record Lob Probabilities for Tokens')
+    parser.add_argument('--noComments', action='store_true', default=False, help='Query with commentless code')
     parser.add_argument('--zeroShot', action='store_true', default=False, help='Flag for zero-shot inference')
     parser.add_argument('--postQuerySleep', type=float, default=0.5, help='Sleep time after each query')
     parser.add_argument('--numTrials', type=int, default=1, help='Number of trials')
@@ -271,6 +273,9 @@ async def main():
 
     if args.includeLogProbs:
         outcsvPrefix += '-withLogProbs'
+
+    if args.noComments:
+        outcsvPrefix += '-NOcomments'
 
     parser.add_argument('--outputCSV', type=str, default=f'{outcsvPrefix}-inference-results-{args.modelName.split("/")[-1]}.csv', help='Output CSV file name')
 
@@ -294,8 +299,12 @@ async def main():
         OPENROUTER_API_KEY = args.apiKey
 
     # we need to gather more data for this dataset
-    trainDF = pd.read_csv('train-dataset-balanced.csv', quotechar='"', dtype=dtypes)
-    valDF = pd.read_csv('validation-dataset-balanced.csv', quotechar='"', dtype=dtypes)
+    if args.noComments:
+        trainDF = pd.read_csv('train-dataset-balanced-no-comments.csv', quotechar='"', dtype=dtypes)
+        valDF = pd.read_csv('validation-dataset-balanced-no-comments.csv', quotechar='"', dtype=dtypes)
+    else:
+        trainDF = pd.read_csv('train-dataset-balanced.csv', quotechar='"', dtype=dtypes)
+        valDF = pd.read_csv('validation-dataset-balanced.csv', quotechar='"', dtype=dtypes)
 
     trainDF['isTrain'] = 1
     valDF['isTrain'] = 0

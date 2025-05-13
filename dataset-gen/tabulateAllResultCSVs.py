@@ -164,23 +164,72 @@ def read_results_csv(csvFile):
     isZeroShot = False
     isSASS = False
     isTrainedModel = False
+    isNOComments = False
+
     if 'zero-shot-' in csvFile:
         isZeroShot = True
         if 'SASS-only' in csvFile:
             isSASS = True
-            modelName = csvFile[len('zero-shot-SASS-only-inference-results-'):-4]
+            if 'NOcomments' in csvFile:
+                isNOComments = True
+                prefix = 'zero-shot-SASS-only-NOcomments-inference-results-'
+            else:
+                prefix = 'zero-shot-SASS-only-inference-results-'
+            modelName = csvFile[len(prefix):-4]
         else:
-            modelName = csvFile[len('zero-shot-inference-results-'):-4]
+            if 'NOcomments' in csvFile:
+                isNOComments = True
+                prefix = 'zero-shot-NOcomments-inference-results-'
+            else:
+                prefix = 'zero-shot-inference-results-'
+            modelName = csvFile[len(prefix):-4]
+
     elif 'few-shot-' in csvFile:
         if 'SASS-only' in csvFile:
             isSASS = True
-            modelName = csvFile[len('few-shot-SASS-only-inference-results-'):-4]
+            if 'NOcomments' in csvFile:
+                isNOComments = True
+                prefix = 'few-shot-SASS-only-NOcomments-inference-results-'
+            else:
+                prefix = 'few-shot-SASS-only-inference-results-'
+            modelName = csvFile[len(prefix):-4]
         else:
-            modelName = csvFile[len('few-shot-inference-results-'):-4]
+            if 'NOcomments' in csvFile:
+                isNOComments = True
+                prefix = 'few-shot-NOcomments-inference-results-'
+            else:
+                prefix = 'few-shot-inference-results-'
+            modelName = csvFile[len(prefix):-4]
+
     else:
         assert 'trainedModel-inference-BALANCED-training-results-' in csvFile, "Don't recognize input CSV file"
         isTrainedModel = True
-        modelName = csvFile[len('trainedModel-inference-BALANCED-training-results-'):-4]
+        if 'NOcomments' in csvFile:
+            isNOComments = True
+            prefix = 'trainedModel-inference-BALANCED-NOcomments-training-results-'
+        else:
+            prefix = 'trainedModel-inference-BALANCED-training-results-'
+        modelName = csvFile[len(prefix):-4]
+    #isZeroShot = False
+    #isSASS = False
+    #isTrainedModel = False
+    #if 'zero-shot-' in csvFile:
+    #    isZeroShot = True
+    #    if 'SASS-only' in csvFile:
+    #        isSASS = True
+    #        modelName = csvFile[len('zero-shot-SASS-only-inference-results-'):-4]
+    #    else:
+    #        modelName = csvFile[len('zero-shot-inference-results-'):-4]
+    #elif 'few-shot-' in csvFile:
+    #    if 'SASS-only' in csvFile:
+    #        isSASS = True
+    #        modelName = csvFile[len('few-shot-SASS-only-inference-results-'):-4]
+    #    else:
+    #        modelName = csvFile[len('few-shot-inference-results-'):-4]
+    #else:
+    #    assert 'trainedModel-inference-BALANCED-training-results-' in csvFile, "Don't recognize input CSV file"
+    #    isTrainedModel = True
+    #    modelName = csvFile[len('trainedModel-inference-BALANCED-training-results-'):-4]
 
 
     df = pd.read_csv(csvFile, quotechar='\"', dtype=dtypes)
@@ -208,36 +257,76 @@ def read_results_csv(csvFile):
     # make the response the opposite value -- so it's counted as wrong
     df['llmResponse'] = df.apply(lambda x: x['answer'] if x['isLLMCorrect'] else ('Compute' if x['answer'] == 'Bandwidth' else 'Bandwidth'), axis=1)
     
-    return (df, modelName, isZeroShot, isSASS, isTrainedModel)
+    return (df, modelName, isZeroShot, isSASS, isTrainedModel, isNOComments)
 
-
-def find_all_csvs_of_type(fewShot, zeroShot, trained, onlySASS):
+def find_all_csvs_of_type(fewShot, zeroShot, trained, onlySASS, noComments):
     # we assume all the data CSVs are in the current directory
     # we're going to amalgamate results from CSVs that share the same model
-    # therefore be careful calling this with fewShot and zeroShot enabled
-    # since it'll join both results
     csvFiles = []
     if fewShot:
-        if onlySASS:
-            csvs = list(glob.glob('few-shot-SASS-only-inference-results-*.csv'))
+        if noComments:
+            if onlySASS:
+                pattern = 'few-shot-SASS-only-NOcomments-inference-results-*.csv'
+            else:
+                pattern = 'few-shot-NOcomments-inference-results-*.csv'
         else:
-            csvs = list(glob.glob('few-shot-inference-results-*.csv'))
-        csvFiles += csvs
+            if onlySASS:
+                pattern = 'few-shot-SASS-only-inference-results-*.csv'
+            else:
+                pattern = 'few-shot-inference-results-*.csv'
+        csvFiles += list(glob.glob(pattern))
     if zeroShot:
-        if onlySASS:
-            csvs = list(glob.glob('zero-shot-SASS-only-inference-results-*.csv'))
+        if noComments:
+            if onlySASS:
+                pattern = 'zero-shot-SASS-only-NOcomments-inference-results-*.csv'
+            else:
+                pattern = 'zero-shot-NOcomments-inference-results-*.csv'
         else:
-            csvs = list(glob.glob('zero-shot-inference-results-*.csv'))
-        csvFiles += csvs
+            if onlySASS:
+                pattern = 'zero-shot-SASS-only-inference-results-*.csv'
+            else:
+                pattern = 'zero-shot-inference-results-*.csv'
+        csvFiles += list(glob.glob(pattern))
     if trained:
         # didn't train with SASS, so we omit the SASS check
-        csvs = list(glob.glob('trainedModel-inference-BALANCED-training-results-*.csv'))
-        csvFiles += csvs
-
+        if noComments:
+            pattern = 'trainedModel-inference-BALANCED-NOcomments-training-results-*.csv'
+        else:
+            pattern = 'trainedModel-inference-BALANCED-training-results-*.csv'
+        csvFiles += list(glob.glob(pattern))
         assert (not fewShot) and (not zeroShot) and (onlySASS), "We didn't gather SASS inference data on trained models"
 
     assert len(csvFiles) != 0, "Didn't find any CSV files, aborting"
     return csvFiles
+
+#def find_all_csvs_of_type(fewShot, zeroShot, trained, onlySASS, noComments):
+#    # we assume all the data CSVs are in the current directory
+#    # we're going to amalgamate results from CSVs that share the same model
+#    # therefore be careful calling this with fewShot and zeroShot enabled
+#    # since it'll join both results
+#    # should be able to handle files called zero-shot-NOcomments-inference-results-o4-mini.csv too
+#    csvFiles = []
+#    if fewShot:
+#        if onlySASS:
+#            csvs = list(glob.glob('few-shot-SASS-only-inference-results-*.csv'))
+#        else:
+#            csvs = list(glob.glob('few-shot-inference-results-*.csv'))
+#        csvFiles += csvs
+#    if zeroShot:
+#        if onlySASS:
+#            csvs = list(glob.glob('zero-shot-SASS-only-inference-results-*.csv'))
+#        else:
+#            csvs = list(glob.glob('zero-shot-inference-results-*.csv'))
+#        csvFiles += csvs
+#    if trained:
+#        # didn't train with SASS, so we omit the SASS check
+#        csvs = list(glob.glob('trainedModel-inference-BALANCED-training-results-*.csv'))
+#        csvFiles += csvs
+#
+#        assert (not fewShot) and (not zeroShot) and (onlySASS), "We didn't gather SASS inference data on trained models"
+#
+#    assert len(csvFiles) != 0, "Didn't find any CSV files, aborting"
+#    return csvFiles
 
 
 def calc_metrics_of_df(df):
@@ -270,7 +359,7 @@ def calculate_metrics(csvFiles):
     # each CSV file will get it's own row in the stats table
     for csvName in csvFiles:
         print('Calculating metrics for ', csvName)
-        csvDF, modelName, isZeroShot, isSASS, isTrained = read_results_csv(csvName)
+        csvDF, modelName, isZeroShot, isSASS, isTrained, isNOComments = read_results_csv(csvName)
         print('Read CSV complete for model:', modelName)
 
         summDict = {}
@@ -278,6 +367,7 @@ def calculate_metrics(csvFiles):
         summDict['Is Zero Shot?'] = [isZeroShot]
         summDict['Is SASS?'] = [isSASS]
         summDict['Used Trained Model?'] = [isTrained]
+        summDict['Is NO Comments?'] = [isNOComments]
         summDict['Number of Samples'] = csvDF.shape[0]
 
         summDF = pd.DataFrame.from_dict(summDict)
@@ -332,6 +422,7 @@ def main():
     parser.add_argument('--zeroShot', action='store_true', default=False, help='Make table for zero-shot data')
     parser.add_argument('--trained', action='store_true', default=False, help='Make table for trained-model inference data')
     parser.add_argument('--onlySASS', action='store_true', default=False, help='Only read the data files that used SASS')
+    parser.add_argument('--noComments', action='store_true', default=False, help='Only read the data files that ran without comments')
 
     args = parser.parse_args()
 
@@ -344,6 +435,8 @@ def main():
         outfileName += '-trained'
     if args.onlySASS:
         outfileName += '-onlySASS'
+    if args.noComments:
+        outfileName += '-noComments'
 
     outfileName += '.csv'
 
@@ -352,9 +445,10 @@ def main():
     print('Zero Shot', args.zeroShot)
     print('Trained', args.trained)
     print('Only SASS', args.onlySASS)
+    print('No Comments', args.noComments)
     print('Output File', outfileName)
 
-    csvFiles = find_all_csvs_of_type(args.fewShot, args.zeroShot, args.trained, args.onlySASS) 
+    csvFiles = find_all_csvs_of_type(args.fewShot, args.zeroShot, args.trained, args.onlySASS, args.noComments) 
     print('Found CSVs:')
     for filename in csvFiles:
         print(f'\n\t {filename}')
