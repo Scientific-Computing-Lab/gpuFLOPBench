@@ -153,6 +153,7 @@ CUDA_LANGUAGE = Language(tree_sitter_cuda.language())
 def remove_comments_cuda(code):
     """
     Remove all comments from a CUDA code string using Tree-sitter.
+    This should work for both CUDA and OpenMP code.
     
     Args:
         code (str): CUDA source code.
@@ -164,9 +165,13 @@ def remove_comments_cuda(code):
     # if we're given the empty string, just return it
     if code == '':
        return code
+    
+    og_code = code
+    code = bytes(code, 'utf8')
 
     parser = Parser(CUDA_LANGUAGE)
-    tree = parser.parse(bytes(code, 'utf8'))
+    #tree = parser.parse(bytes(code, 'utf8'))
+    tree = parser.parse(code)
     root_node = tree.root_node
 
     #print('BEFORE CODE START')
@@ -180,7 +185,7 @@ def remove_comments_cuda(code):
 
     # some codes have no comments, so the 'comment' key wont exist
     if 'comment' not in list(captures_dict.keys()):
-      return code
+      return og_code
 
     captures = captures_dict['comment']
 
@@ -199,6 +204,9 @@ def remove_comments_cuda(code):
         result.append(code[last_index:start])
         last_index = end
     result.append(code[last_index:])
+
+    # need to decode all the parts
+    result = [part.decode('utf8') for part in result]
 
     new_code = ''.join(result)
     #print('NEW CODE START')

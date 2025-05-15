@@ -365,10 +365,10 @@ def calculate_metrics(csvFiles):
         summDict = {}
         summDict['Model Name'] = [modelName]
         summDict['Is Zero Shot?'] = [isZeroShot]
-        summDict['Is SASS?'] = [isSASS]
-        summDict['Used Trained Model?'] = [isTrained]
         summDict['Is NO Comments?'] = [isNOComments]
         summDict['Number of Samples'] = csvDF.shape[0]
+        summDict['Is SASS?'] = [isSASS]
+        summDict['Used Trained Model?'] = [isTrained]
 
         summDF = pd.DataFrame.from_dict(summDict)
 
@@ -456,7 +456,7 @@ def main():
     df = calculate_metrics(csvFiles)
 
     df = df.sort_values(by=['Joint Acc', 'Model Name', 'Number of Samples'], ignore_index=True, ascending=False)
-    print(df)
+    print(df[['Model Name', 'Number of Samples', 'Joint Acc', 'CUDA Acc', 'OMP Acc']])
 
     df.to_csv(outfileName, quoting=csv.QUOTE_NONNUMERIC, quotechar='"', index=False, na_rep='NULL')
     print('Saved Summary Metrics to:', outfileName)
