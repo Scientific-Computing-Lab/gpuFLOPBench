@@ -22,7 +22,16 @@ dtypes['isBB'] = np.int64
 dtypes['class'] = 'string'
 dtypes['answer'] = 'string'
 
+reasoning_models = ['o3', 'o1', 'o4']
 
+def is_reasoning_model(modelName):
+    # the last part of the model name is the model name
+    # example: openai/o3-mini-2024-11-20 is o3-mini-2024-11-20
+    mName = modelName.split('/')[-1]
+    for m in reasoning_models:
+        if m in mName:
+            return True
+    return False
 
 async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=False, temp=1.0, topp=0.1, timeout=60, storeLogProbs=False):
 
@@ -30,6 +39,9 @@ async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=F
     logprob_args = {}
     if storeLogProbs:
         logprob_args = {'logprobs': storeLogProbs, 'top_logprobs': 4}
+
+    if is_reasoning_model(modelName):
+        temp_topp_args = {'temperature': temp, 'top_p': topp}
 
     if useAzure:
         model_client = AzureOpenAIChatCompletionClient(
@@ -44,6 +56,7 @@ async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=F
                 #top_p = topp,
                 #api_version='2024-12-01-preview',
                 api_version='2025-01-01-preview',
+                **temp_topp_args,
                 **logprob_args,
                 model_info = {'vision':False, 'function_calling':True, 'json_output':True, 'family':'unknown'}
         )
@@ -64,6 +77,7 @@ async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=F
                 # comment these back in for the non-reasoning models
                 #top_p = topp,
                 #temperature=temp,
+                **temp_topp_args,
                 **logprob_args,
                 model_info = {'vision':False, 'function_calling':True, 'json_output':False, 'family':'unknown'}
         )
