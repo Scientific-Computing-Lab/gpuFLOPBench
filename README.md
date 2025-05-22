@@ -13,7 +13,13 @@ Target codes thus-far:
   - We are able to build 303/320 (94.6%) of the OMP targets
   - We purposely skip building 17/320 due to MPI requirements or missing build dependencies
   
+## Github Actions Status
 
+For demonstrating the build process, we include the following Github Action in the `.github/workflows/buildAllCodesGithubAction.yml` file.
+This sets up a Docker container with all the necessary programs and code to build all the HecBench codes with our CMakeLists approach.
+You can copy the steps of this GitHub Action yaml file in a private Docker container to recreate the executables.
+
+[![Build ALL CUDA/OMP Codes](https://github.com/gregbolet/HeCBench-roofline/actions/workflows/buildAllCodesGithubAction.yml/badge.svg)](https://github.com/gregbolet/HeCBench-roofline/actions/workflows/buildAllCodesGithubAction.yml)
 
 ## Building
 
