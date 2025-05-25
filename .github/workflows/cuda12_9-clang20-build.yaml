@@ -1,0 +1,97 @@
+name: Build ALL CUDA/OMP Codes -- cuda-12.9 -- clang-20 -- cmake 3.28
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [no-comments]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:12.9.0-devel-ubuntu24.04
+
+    steps:
+      - name: Free up Disk Space
+        shell: bash
+        run: |
+          rm -rf /__t/CodeQL
+          rm -rf /__t/Python
+          rm -rf /usr/share/dotnet
+          rm -rf /opt/ghc
+          rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      - name: Update Packages and Install wget
+        shell: bash
+        run: |
+          apt update
+          apt upgrade -y
+          apt install -y wget software-properties-common
+
+      - name: Install Clang++ and newest CMake
+        run: |
+           # Install Clang 20
+           wget https://apt.llvm.org/llvm.sh
+           chmod +x llvm.sh
+           ./llvm.sh 20 all
+           DEBIAN_FRONTEND=noninteractive apt install -y \
+             clang-20 make git gfortran libomp-20-dev libboost-all-dev clang-tools-20
+
+           # Install the latest CMake version (using 3.28 as in the original)
+           wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0-linux-x86_64.sh
+           chmod +x cmake-3.28.0-linux-x86_64.sh
+           ./cmake-3.28.0-linux-x86_64.sh --skip-license --prefix=/usr/local
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run CMake Setup/Config Script
+        shell: bash
+        run: |
+              mkdir -p ./build && cd ./build
+              cmake -DCMAKE_C_COMPILER=clang-20 \
+              -DCMAKE_CXX_COMPILER=clang++-20 \
+              -DCMAKE_CUDA_HOST_COMPILER=clang++-20 \
+              -DCMAKE_CUDA_COMPILER=clang++-20 \
+              -DCMAKE_Fortran_COMPILER=gfortran \
+              -DBUILD_ALL=ON \
+              -DBUILD_OMP=ON \
+              -DBUILD_CUDA=ON \
+              -DCUDAToolkit_ROOT=/usr/local/cuda-12.9/ \
+              -DCMAKE_C_FLAGS="-O3 -v" \
+              -DCMAKE_CXX_FLAGS="-O3 -v" \
+              -DCMAKE_CUDA_FLAGS="-O3 -v" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCUSTOM_OMP_FLAGS="-v --offload-arch=sm_86 -isystem /usr/lib/llvm-20/lib/clang/20/include/openmp_wrappers" \
+              -DCUSTOM_CUDA_FLAGS="-v -isystem /usr/lib/llvm-20/lib/clang/20/include/cuda_wrappers" \
+              -DCUSTOM_OMP_LINK_FLAGS="-v -L/usr/lib/llvm-20/lib -lomp -lomptarget" \
+              -DCUSTOM_CUDA_LINK_FLAGS="-v" \
+              -DCUDA_ARCH="86" \
+              -S../ -B./
+
+      - name: Build All CUDA/OMP Executables
+        shell: bash
+        run: |
+          pwd && cd ./build
+          make -j4 all
+
+      - name: Check Build Executables
+        run: |
+          if [ ! -d ./build ]; then
+            echo "Build directory not found!"
+            exit 1
+          fi
+
+          found_exec=0
+          for file in ./build/*; do
+            # check if an executable and not a directory
+            if [ -x "$file" ] && [ ! -d "$file" ]; then
+              echo "Found executable: $file"
+              found_exec=1
+            fi
+          done
+
+          if [ $found_exec -eq 0 ]; then
+            echo "No executables found in ./build"
+            exit 1
+          fi
