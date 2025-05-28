@@ -29,10 +29,10 @@ By default, we have everything building with `clang++` and `clang`, this should 
 ```
 source ./runBuild.sh
 ```
-We originally had the CUDA codes building with `nvcc` but for simplicity have switch to just LLVM. You may be able to build the codes with `nvcc`, but it may take some modifications to the build pipeline.
+We originally had the CUDA codes building with `nvcc` but for simplicity have switch to just LLVM. You may still be able to build the codes with `nvcc`, but it may take some modifications to the build pipeline.
 
 
-# Common Build Issues
+## Common Build Issues
 
 The biggest build issue is that `clang` isn't assigning the proper order of includes when building a CUDA or OMP program. To get around this we include some extra flags in the `runBuild.sh` script that allow you to overwrite the include directories that `clang` tries to automgically put in. An example with the `LASSEN` build flags is included to guide what directories are required for other machines. 
 
@@ -46,6 +46,7 @@ Here's a list of other common build issues that might help if you're encounterin
 - source files that need to be unzipped
 - missing libs to link
 - putting some search/include dirs before others when compiling (duplicate filenames can cause header include mixups)
+
 
 ## Gathering Roofline Data
 
@@ -71,7 +72,8 @@ The internal workflow at a high level looks like the following:
 9. Write gathered data to output `roofline-data.csv` file.
 
 
-The `gatherData.py` script will emit a CSV file containing all the benchmarking data. After each kernel is run, the data is written out to the last line of the CSV file. We encourage writing the results of the execution to a log file for later error/execution analysis. 
+The `gatherData.py` script will emit a CSV file called `roofline-data.csv` containing all the benchmarking data. After each kernel is run, the data is written out to the last line of the CSV file. We encourage writing the results of the execution to a log file for later error/execution analysis. 
+
 
 ## Scraping the CUDA kernels
 
@@ -86,22 +88,107 @@ cd ./analysis
 python3 simpleScrapeKernels.py
 ```
 
-The scraped output will be a file called `simple-scraped-kernels.json` in JSON format. We particularly do this simple form of scraping because we're struggling to have a proper AST traversal script that can properly extract CUDA kernels from source. This is a future step we're working on. For now, this file contains all the source files from each executable that was built in the `build` directory.
+The scraped output will be a file called `simple-scraped-kernels-with-sass.json` in JSON format. 
+We particularly do this simple form of scraping because we're struggling to have a proper AST traversal script that can properly extract CUDA kernels from source. 
+This is a future step we're working on. For now, this file contains all the source files from each executable that was built in the `build` directory.
+Because this is an update version, we include SASS code in the scrape, but these are not used in the final results of this paper.
 
-## Building the LLM Dataset
+## Pruning the Scraped Kernels
 
-We use the `analysis/vizAndPruneScrapedKernels.ipynb` notebook to ingest the `analysis/simple-scraped-kernels.json` file and emit two new JSON files with the pruned source data: `dataset-gen/simple-scraped-kernels-CUDA-pruned.json` and `dataset-gen/simple-scraped-kernels-OMP-pruned.json`. Given that some codes have very long input contexts, we drop these codes from inference/testing to save on inference/training costs. The cap we set is at 8k tokens for now, based on a token count analysis done to check the max number of programs we could keep without the codes being too verbose in tokenage.
+Once we have the scraped source code, we can run the `analysis/vizAndPruneScrapedKernels.ipynb` notebook to:
 
-After these two files have been generated, we can use the `analysis/createZeroShotDataset.ipynb` notebook to take in all three files of `dataset-gen/simple-scraped-kernels-CUDA-pruned.json`, `dataset-gen/simple-scraped-kernels-OMP-pruned.json`, and `roofline-data.csv` and emit a JSONL file for zero-shot inferencing; the file is called: `zero-shot-inference-data.jsonl`. 
+- check the collected data using some histogram plots of the tokenizer token counts
+- calculate expected minimum query cost given a percentage of the dataset
+- limits the selected codes to those with 8e3 or less tokens
+- emit the following files:
+  - `../dataset-gen/simple-scraped-kernels-CUDA-pruned-with-sass.json`
+  - `../dataset-gen/simple-scraped-kernels-OMP-pruned-with-sass.json`
+
+Given that some codes have very long input contexts, we drop these codes from inference/testing to save on inference/training costs.
+The cap we set is at 8k tokens for now, based on an initial token count analysis done to check the max number of programs we could keep without the codes being too costly to query or verbose in tokenage.
+We essentially get to keep 50% of all the CUDA and OMP codes whose roofline values were sampled.
 
 
-## Dataset Visualization (TODO)
+## Creating the Roofline Dataset for Querying LLMs
 
-Once we've gathered hundreds of data samples, we want to check the data to be sure it's alright. We have some visualization scripts to help with seeing the data we collected at a high level. We do this with a Jupyter Notebook called `visualizeGatheredData-withLaunchData.ipynb` and `visualizeAndPruntScrapedKernels.ipynb`. 
+Once we have the `simple-scraped-kernels-CUDA-pruned-with-sass.json`, `simple-scraped-kernels-OMP-pruned-with-sass.json`, and `roofline-data.csv` files generated, we can create the Roofline Dataset by invoking the `dataset-gen/createTrainingDatset.ipynb` notebook to emit two files:
+
+- `train-dataset-balanced.csv` -- 80% of the sampled codes
+- `validation-dataset-balanced.csv` -- 20% of the sampled codes
+
+Each row of these CSV files contains one kernel and its scraped source code along with SASS code.
+For now we don't use the SASS code, as this is for a future effort.
+
+The notebook will go through the scraped codes and roofline performance data, performing the following actions:
+- Dropping any codes that were not scraped due to the token cutoff
+- Creating a Roofline plot of the collected data -- it's also the plot we use in the paper
+- Limits the number of times a code can appear in the dataset to once (some codes had multiple kernels that got scraped, so we only query about 1 kernel from the program)
+- Balances the dataframe to have an equal number of Bandwidth-bound (BB) and Compute-bound (CB) codes (most are BB)
+-  Does an 80/20 train/validation split of the full dataset
+
+<br>
+<br>
+
+We NOTE: depending on your GPU version/capabilities, you'll need to edit the following values in the `dataset-gen/roofline_utils.py` script:
+- `gpuName = 'NVIDIA RTX 3080'` -- name of the GPU
+- `baseClockHz = 1.440e9` -- base clock in units of Hertz (from vendor specs)
+- `maxBandwidthTBPerSec = 0.7603` -- Max global memory bandwidth in units of TB-per-sec (from vendor specs)
+
+[The following specs for the GPU tested in this work can be found HERE](https://www.techpowerup.com/gpu-specs/evga-rtx-3080-xc3-ultra.b8041)
+
+- `SPinstPerCyclePerSM = 128` -- number of single-precision instructions per cycle per SM
+- `DPinstPerCyclePerSM = 2` -- number of double-precision instructions per cycle per SM
+- `intInstPerCyclePerSM = 64` -- number of integer instructions per cycle per SM
+- `numSMs = 68` -- number of SMs
+- `numFMAopPerInst = 2` -- number of Fused-Multiply-Add (FMA) operations per instruction
+
+[The above numbers can be found in a CUDA programming guide arithmetic instructions table HERE](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions)
+
+These values get used in calculating operations and performance counter values, so be sure to set these correctly, otherwise the roofline plots we generate may be off.
+These values are used to calculate the exact same *theoretical performance* values reported on the GPU vendor spec websites, which we then use to make our Roofline model plots.
+
+
+## Querying the LLMs
+
+To perform this step, the following files should be present:
+- `dataset-gen/.openrouter-api-key` -- API key to LLM service provider, we used OpenRouter and Azure to query many different models (can instead use the `--apiKey` script flag)
+- `train-dataset-balanced.csv` -- The 80% of the data to query with
+- `validation-dataset-balanced.csv` -- The remaining 20% of the data to query with (gets added to the 80% data) 
+
+We invoke the `runFewShotTrials.py` script which is designed to perform both few-shot and zero-shot trials.
+Check the script source for a description of each of the input arguments that can be passed to the script. 
+Example invocations are provided below:
+
+
+Manual API key specification, along with zero-shot trials of the `o3-mini` reasoning model.
+```
+python3 ./runFewShotTrials.py --zeroShot --apiKey XXXX --modelName=openai/o3-mini
+```
+
+Use the `.openrouter-api-key` file for authentication. Query the model with each sample from the dataset for all 9 combinations of `--temps` and `--topps`.
+```
+python3 ./runFewShotTrials.py --modelName=openai/gpt-4o-mini --temps 0.3 0.4 0.5 --topps 0.2 0.3 0.4
+```
+
+We note that the script detects when a reasoning model is being used and so it doesn't explore the various combinations of `--temps` and `--topps` hyperparameters passed to the LLM. 
+
+
+## Helper Scripts 
+
+1) `dataset-gen/writeScrapedKernelWithPromptToFile.py`
+This script is mainly used as a sanity check to print the full text prompt that is used for querying an LLM.
+The prompt will include the system message and the filled-in templated prompt with source code.
+The output is written to a `.txt` file for viewing.
+
+2) `analysis/visualizeGatheredData-withLaunchData.ipynb`
+This script does some additional grid size and block size launch bounds distribution visualization based on the sampled kernels. 
+It gives us an idea of the distribution of the execution params of the codes we are sampling, along with some additional histogram plots of the sampled performances and arithmetic intensities of each kernel.
 
 ## Limitations
 
 1. We're not profiling all the possible kernel invocations, only the first two invocations of each kernel. There are some codes like `bitpermute-cuda` which make multiple increasing calls to its kernels, we only profile the first two.
+
+2. This system was heavily designed around NVIDIA/CUDA GPU hardware, we have eventual plans to expand to AMD GPUs
 
 
 ### Future Features (TODO)
@@ -110,10 +197,14 @@ These are features we would like to have, but they're not a priority at the mome
 - for targets with multiple `run` makefile invocations, store all to invocations run (instead of just the first)
 - support for weird precisions? -- what CUDA counters do we need?
 - can we do the `ncu` regex with all the kernels -- so we just need to do one run instead of a run for each kernel
-- add `nvprof` support for systems that `ncu` can't gather on
+- add `nvprof` support for systems that `ncu` can't gather on (e.g: LLNL Lassen)
 - perform a trial run with `nvprof`, gather all kernel launches with different launch bounds, use `ncu` `-skip` flag to target profiling each launch
   - this will gather more data as some kernels change grid-size and block-size between calls
   - this may be slower to gather data though
 - figure out why some programs are having memory allocation issues (can we give different input?)
 - Switch performance counter Python reading interface to use [`ncu_report`](https://docs.nvidia.com/nsight-compute/PythonReportInterface/index.html)
 - Use `tree-sitter` to scrape CUDA kernels instead of using whole source codes
+- Implement a smarter way fo detecting if an LLM is reasoning-based or not
+- For some weird reason, none of the APIs we use return the *thoughts* of the reasoning model, we need to include this to properly diagnose why the models mispredict
+- Clean up the CMakeLists.txt logic for including files
+- Only a few codes don't have their `main(...)` included in the source scrape due to us not including source files from other source directories.
