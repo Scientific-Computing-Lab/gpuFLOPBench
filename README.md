@@ -47,6 +47,16 @@ Here's a list of other common build issues that might help if you're encounterin
 - missing libs to link
 - putting some search/include dirs before others when compiling (duplicate filenames can cause header include mixups)
 
+## Python Environment Setup
+
+We used Python3 (v3.11.11) for executing our Python scripts.
+The `requirements.txt` file contains all the necessary packages and their versions that should be installed prior to using any of our Python scripts.
+It is strongly advised to set up a new Conda environment to not mess up the base Python installation on your system.
+
+```
+conda create --name "hecbench-roofline" --file=./requirements.txt python=3.11.11
+conda activate hecbench-roofline
+```
 
 ## Gathering Roofline Data
 
