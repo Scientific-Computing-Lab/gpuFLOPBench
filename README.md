@@ -17,6 +17,9 @@ Target codes thus-far:
 
 This work was accepted at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
 Upon having our paper accepted, we pre-published on arXiv in case people wanted to cite us.
+
+[arXiv paper link here](https://arxiv.org/abs/2505.03988) -- will update once HPDC 2025 proceedings is published.
+
 BibTeX reference below.
 ```
 @article{bolet2025can,
