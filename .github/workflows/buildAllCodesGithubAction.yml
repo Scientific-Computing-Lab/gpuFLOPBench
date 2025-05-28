@@ -3,8 +3,7 @@ name: Build ALL CUDA/OMP Codes -- cuda-12.6 -- clang-18 -- cmake 3.28
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-  pull_request:
+    branches: [no-comments]
 
 jobs:
   build:
