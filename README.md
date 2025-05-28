@@ -90,7 +90,7 @@ The scraped output will be a file called `simple-scraped-kernels.json` in JSON f
 
 ## Building the LLM Dataset
 
-We use the `analysis/vizAndPruneScrapedKernels.ipynb` notebook to ingest the `analysis/simple-scraped-kernels.json` file and emit two new JSON files with the pruned source data: `dataset-gen/simple-scraped-kernels-CUDA-pruned.json` and `dataset-gen/simple-scraped-kernels-OMP-pruned.json`. Given that some codes have very long input contexts, we drop these codes from inference/testing to save on inference/training costs. The cap we set is at 8k tokens for now.  
+We use the `analysis/vizAndPruneScrapedKernels.ipynb` notebook to ingest the `analysis/simple-scraped-kernels.json` file and emit two new JSON files with the pruned source data: `dataset-gen/simple-scraped-kernels-CUDA-pruned.json` and `dataset-gen/simple-scraped-kernels-OMP-pruned.json`. Given that some codes have very long input contexts, we drop these codes from inference/testing to save on inference/training costs. The cap we set is at 8k tokens for now, based on a token count analysis done to check the max number of programs we could keep without the codes being too verbose in tokenage.
 
 After these two files have been generated, we can use the `analysis/createZeroShotDataset.ipynb` notebook to take in all three files of `dataset-gen/simple-scraped-kernels-CUDA-pruned.json`, `dataset-gen/simple-scraped-kernels-OMP-pruned.json`, and `roofline-data.csv` and emit a JSONL file for zero-shot inferencing; the file is called: `zero-shot-inference-data.jsonl`. 
 
@@ -104,7 +104,7 @@ Once we've gathered hundreds of data samples, we want to check the data to be su
 1. We're not profiling all the possible kernel invocations, only the first two invocations of each kernel. There are some codes like `bitpermute-cuda` which make multiple increasing calls to its kernels, we only profile the first two.
 
 
-### Future (less-important) Features (TODO)
+### Future Features (TODO)
 These are features we would like to have, but they're not a priority at the moment because what we have so far is giving us a good amount of data.
 
 - for targets with multiple `run` makefile invocations, store all to invocations run (instead of just the first)
@@ -114,7 +114,8 @@ These are features we would like to have, but they're not a priority at the mome
 - perform a trial run with `nvprof`, gather all kernel launches with different launch bounds, use `ncu` `-skip` flag to target profiling each launch
   - this will gather more data as some kernels change grid-size and block-size between calls
   - this may be slower to gather data though
-- figure out why some programs are having memory allocation issues (can we give different input?) 
+- figure out why some programs are having memory allocation issues (can we give different input?)
+- Switch performance counter Python reading interface to use [`ncu_report`](https://docs.nvidia.com/nsight-compute/PythonReportInterface/index.html)
 
 
 ---
