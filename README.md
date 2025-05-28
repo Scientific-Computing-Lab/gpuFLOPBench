@@ -13,6 +13,20 @@ Target codes thus-far:
   - We are able to build 303/320 (94.6%) of the OMP targets
   - We purposely skip building 17/320 due to MPI requirements or missing build dependencies
   
+## Citing our Work
+
+This work was accepted at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
+Upon having our paper accepted, we pre-published on arXiv in case people wanted to cite us.
+BibTeX reference below.
+```
+@article{bolet2025can,
+  title={Can Large Language Models Predict Parallel Code Performance?},
+  author={Bolet, Gregory and Georgakoudis, Giorgis and Menon, Harshitha and Parasyris, Konstantinos and Hasabnis, Niranjan and Estes, Hayden and Cameron, Kirk W and Oren, Gal},
+  journal={arXiv preprint arXiv:2505.03988},
+  year={2025}
+}
+```
+
 ## Github Actions Status
 
 For demonstrating the build process, we include the following Github Action in the `.github/workflows/buildAllCodesGithubAction.yml` file.
