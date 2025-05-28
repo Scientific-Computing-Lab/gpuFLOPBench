@@ -173,6 +173,40 @@ python3 ./runFewShotTrials.py --modelName=openai/gpt-4o-mini --temps 0.3 0.4 0.5
 We note that the script detects when a reasoning model is being used and so it doesn't explore the various combinations of `--temps` and `--topps` hyperparameters passed to the LLM. 
 
 
+## Tabulating Results
+
+Once multiple LLMs have been run through the roofline dataset, we will have multiple CSV results files like below.
+```
+>> ls zero-shot-inference-results*.csv
+zero-shot-inference-results-gpt-4o-2024-11-20.csv
+zero-shot-inference-results-gpt-4o-mini-2024-07-18.csv
+zero-shot-inference-results-gpt-4o-mini.csv
+zero-shot-inference-results-o1-mini-2024-09-12.csv
+zero-shot-inference-results-o1.csv
+zero-shot-inference-results-o3-mini-high.csv
+zero-shot-inference-results-o3-mini.csv
+```
+
+We can use the `dataset-gen/tabulateAllResultCSVs.py` script to calculate the accuracy of the LLM predictions from these CSV files.
+The script prints some summary stats of the accuracy of each LLM on predicting the dataset.
+
+```
+>> python3 tabulateAllResultCSVs.py --zeroShot
+...
+...
+                          Model Name  Number of Samples  Joint Acc  CUDA Acc  OMP Acc
+                        o3-mini-high                340      64.12     64.12    64.12
+                                  o1                340      64.12     64.12    64.12
+                             o3-mini                340      62.06     64.71    59.41
+                     gpt-4.5-preview                340      59.71     60.00    59.41
+                  o1-mini-2024-09-12                340      59.64     60.12    59.17
+                   gpt-4o-2024-11-20                340      52.06     52.94    51.18
+                         gpt-4o-mini                340      50.59     54.12    47.06
+              gpt-4o-mini-2024-07-18                340      50.29     55.88    44.71
+```
+
+The script also emits a file called: `dataset-gen/allResultsMetrics-zeroShot.csv` with all the tabulated results and additional metrics for comparison.
+
 ## Helper Scripts 
 
 1) `dataset-gen/writeScrapedKernelWithPromptToFile.py`
