@@ -71,8 +71,9 @@ The `requirements.txt` file contains all the necessary packages and their versio
 It is strongly advised to set up a new Conda environment to not mess up the base Python installation on your system.
 
 ```
-conda create --name "hecbench-roofline" --file=./requirements.txt python=3.11.11
+conda create --name "hecbench-roofline" python=3.11.11
 conda activate hecbench-roofline
+pip install -r ./requirements.txt
 ```
 
 ## Gathering Roofline Data
