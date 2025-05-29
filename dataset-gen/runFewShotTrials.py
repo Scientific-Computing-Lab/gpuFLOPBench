@@ -40,7 +40,7 @@ async def ask_llm_for_roofline_classification(chatHistory, modelName, useAzure=F
     if storeLogProbs:
         logprob_args = {'logprobs': storeLogProbs, 'top_logprobs': 4}
 
-    if is_reasoning_model(modelName):
+    if not is_reasoning_model(modelName):
         temp_topp_args = {'temperature': temp, 'top_p': topp}
 
     if useAzure:
