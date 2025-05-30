@@ -15,7 +15,7 @@ def make_generator_agents(model_client):
             "DP FLOP ADD: XXX\nDP FLOP MUL: XXX\nDP FLOP DIV: XXX\nDP FLOP FMA: XXX\n"
             "INT ADD: XXX\nINT MUL: XXX\nINT DIV: XXX\nINT FMA: XXX\n"
             "Fused multiply-adds (FMA) should be counted as 1 here; do not double-count them. "
-            "Analyze properly using loop bounds, kernel launch size, and argument values."
+            "Analyze properly using loop bounds, kernel launch size, and executable argument values."
         ),
         model_client=model_client,
     )
@@ -131,7 +131,8 @@ def make_message_filter_agent(name, source_generator, source_reviewer):
         filter=MessageFilterConfig(
             per_source=[
                 PerSourceFilter(source="user", position="first", count=1),
-                PerSourceFilter(source=source_reviewer, position="last", count=1),
+                PerSourceFilter(source=source_generator.name, position="last", count=3),
+                PerSourceFilter(source=source_reviewer, position="last", count=3),
             ]
         ),
     )
@@ -141,7 +142,7 @@ def build_graphflow(model_client):
     start_agent = AssistantAgent(
         "DummyInitialRequestAgent",
         model_client=model_client,
-        system_message=f"""You are a dummy agent. You don't say or return any text. Reply with the empty string to start the workflow.""",
+        system_message=f"""You are a dummy agent. You don't say or return any text. Reply ONLY with the empty string.""",
     )
 
     (
@@ -205,7 +206,6 @@ def build_graphflow(model_client):
     # Build the agent graph as described
     builder = DiGraphBuilder()
 
-
     #builder.add_node(user_input_agent)
     builder.add_node(start_agent)
     builder.add_node(static_instr_mix_agent)
@@ -231,7 +231,6 @@ def build_graphflow(model_client):
     builder.add_node(summary_agent)
 
     #builder.set_entry_point(user_input_agent)
-    builder.set_entry_point(start_agent)
 
     # User input fans out to all initial generator agents
     builder.add_edge(start_agent, static_instr_mix_agent)
@@ -268,6 +267,7 @@ def build_graphflow(model_client):
     builder.add_edge(memory_write_filter_agent, summary_agent)
     builder.add_edge(data_reuse_filter_agent, summary_agent)
 
+    builder.set_entry_point(start_agent)
 
     graph = builder.build()
 
