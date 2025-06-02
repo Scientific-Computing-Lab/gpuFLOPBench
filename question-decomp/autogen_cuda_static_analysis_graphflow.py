@@ -20,57 +20,57 @@ def make_generator_agents(model_client):
         model_client=model_client,
     )
 
-    # Agent 2: Data type and allocation analysis
-    data_allocation_agent = AssistantAgent(
-        name="KernelDataAllocationAgent",
-        system_message=(
-            "You analyze CUDA C/C++ source code and estimate the amount of global memory allocated "
-            "for integer, single-precision float, and double-precision float data for a single invocation "
-            "of the target CUDA kernel. Use the kernel arguments and executable input arguments to estimate "
-            "the bytes allocated. Output in the format:\n"
-            "INT data allocation: XXX bytes\nSP Float data allocation: XXX bytes\nDP Float data allocation: XXX bytes"
-        ),
-        model_client=model_client,
-    )
+    ## Agent 2: Data type and allocation analysis
+    #data_allocation_agent = AssistantAgent(
+    #    name="KernelDataAllocationAgent",
+    #    system_message=(
+    #        "You analyze CUDA C/C++ source code and estimate the amount of global memory allocated "
+    #        "for integer, single-precision float, and double-precision float data for a single invocation "
+    #        "of the target CUDA kernel. Use the kernel arguments and executable input arguments to estimate "
+    #        "the bytes allocated. Output in the format:\n"
+    #        "INT data allocation: XXX bytes\nSP Float data allocation: XXX bytes\nDP Float data allocation: XXX bytes"
+    #    ),
+    #    model_client=model_client,
+    #)
 
-    # Agent 3: Global memory reads
-    memory_read_agent = AssistantAgent(
-        name="GlobalMemoryReadAgent",
-        system_message=(
-            "You identify and count the number of strictly data READS from global memory performed by a single invocation "
-            "of the target CUDA kernel. For each type, output:\n"
-            "INTOP Reads: XXXX\nSP FLOP Reads: XXXX\nDP FLOP Reads: XXXX"
-        ),
-        model_client=model_client,
-    )
+    ## Agent 3: Global memory reads
+    #memory_read_agent = AssistantAgent(
+    #    name="GlobalMemoryReadAgent",
+    #    system_message=(
+    #        "You identify and count the number of strictly data READS from global memory performed by a single invocation "
+    #        "of the target CUDA kernel. For each type, output:\n"
+    #        "INTOP Reads: XXXX\nSP FLOP Reads: XXXX\nDP FLOP Reads: XXXX"
+    #    ),
+    #    model_client=model_client,
+    #)
 
-    # Agent 4: Global memory writes
-    memory_write_agent = AssistantAgent(
-        name="GlobalMemoryWriteAgent",
-        system_message=(
-            "You identify and count the number of strictly data WRITES to global memory performed by a single invocation "
-            "of the target CUDA kernel. For each type, output:\n"
-            "INTOP Writes: XXXX\nSP FLOP Writes: XXXX\nDP FLOP Writes: XXXX"
-        ),
-        model_client=model_client,
-    )
+    ## Agent 4: Global memory writes
+    #memory_write_agent = AssistantAgent(
+    #    name="GlobalMemoryWriteAgent",
+    #    system_message=(
+    #        "You identify and count the number of strictly data WRITES to global memory performed by a single invocation "
+    #        "of the target CUDA kernel. For each type, output:\n"
+    #        "INTOP Writes: XXXX\nSP FLOP Writes: XXXX\nDP FLOP Writes: XXXX"
+    #    ),
+    #    model_client=model_client,
+    #)
 
-    # Agent 5: Data reuse characterization
-    data_reuse_agent = AssistantAgent(
-        name="KernelDataReuseAgent",
-        system_message=(
-            "You analyze data use and re-use patterns in the target CUDA kernel, classifying each operation type as "
-            "'DENSE', 'MIXED', 'SPARSE', or 'RANDOM' in terms of data access/reuse."
-        ),
-        model_client=model_client,
-    )
+    ## Agent 5: Data reuse characterization
+    #data_reuse_agent = AssistantAgent(
+    #    name="KernelDataReuseAgent",
+    #    system_message=(
+    #        "You analyze data use and re-use patterns in the target CUDA kernel, classifying each operation type as "
+    #        "'DENSE', 'MIXED', 'SPARSE', or 'RANDOM' in terms of data access/reuse."
+    #    ),
+    #    model_client=model_client,
+    #)
 
     return (
         static_instr_mix_agent,
-        data_allocation_agent,
-        memory_read_agent,
-        memory_write_agent,
-        data_reuse_agent,
+        #data_allocation_agent,
+        #memory_read_agent,
+        #memory_write_agent,
+        #data_reuse_agent,
     )
 
 def make_review_agents(model_client):
@@ -83,44 +83,44 @@ def make_review_agents(model_client):
         ),
         model_client=model_client,
     )
-    data_allocation_reviewer_agent = AssistantAgent(
-        name="DataAllocationReviewerAgent",
-        system_message=(
-            "You are a reviewer. Assess the data allocation output for type correctness and plausibility. "
-            "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
-        ),
-        model_client=model_client,
-    )
-    memory_read_reviewer_agent = AssistantAgent(
-        name="MemoryReadReviewerAgent",
-        system_message=(
-            "You are a reviewer. Assess the memory read counts for accuracy and completeness. "
-            "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
-        ),
-        model_client=model_client,
-    )
-    memory_write_reviewer_agent = AssistantAgent(
-        name="MemoryWriteReviewerAgent",
-        system_message=(
-            "You are a reviewer. Assess the memory write counts for accuracy and completeness. "
-            "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
-        ),
-        model_client=model_client,
-    )
-    data_reuse_reviewer_agent = AssistantAgent(
-        name="DataReuseReviewerAgent",
-        system_message=(
-            "You are a reviewer. Assess the data reuse categorization for accuracy. "
-            "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
-        ),
-        model_client=model_client,
-    )
+    #data_allocation_reviewer_agent = AssistantAgent(
+    #    name="DataAllocationReviewerAgent",
+    #    system_message=(
+    #        "You are a reviewer. Assess the data allocation output for type correctness and plausibility. "
+    #        "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
+    #    ),
+    #    model_client=model_client,
+    #)
+    #memory_read_reviewer_agent = AssistantAgent(
+    #    name="MemoryReadReviewerAgent",
+    #    system_message=(
+    #        "You are a reviewer. Assess the memory read counts for accuracy and completeness. "
+    #        "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
+    #    ),
+    #    model_client=model_client,
+    #)
+    #memory_write_reviewer_agent = AssistantAgent(
+    #    name="MemoryWriteReviewerAgent",
+    #    system_message=(
+    #        "You are a reviewer. Assess the memory write counts for accuracy and completeness. "
+    #        "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
+    #    ),
+    #    model_client=model_client,
+    #)
+    #data_reuse_reviewer_agent = AssistantAgent(
+    #    name="DataReuseReviewerAgent",
+    #    system_message=(
+    #        "You are a reviewer. Assess the data reuse categorization for accuracy. "
+    #        "Respond with 'APPROVE' if correct, or 'REVISE' with feedback if not."
+    #    ),
+    #    model_client=model_client,
+    #)
     return (
         static_instr_mix_reviewer_agent,
-        data_allocation_reviewer_agent,
-        memory_read_reviewer_agent,
-        memory_write_reviewer_agent,
-        data_reuse_reviewer_agent,
+        #data_allocation_reviewer_agent,
+        #memory_read_reviewer_agent,
+        #memory_write_reviewer_agent,
+        #data_reuse_reviewer_agent,
     )
 
 def make_message_filter_agent(name, source_generator, source_reviewer):
@@ -131,8 +131,9 @@ def make_message_filter_agent(name, source_generator, source_reviewer):
         filter=MessageFilterConfig(
             per_source=[
                 PerSourceFilter(source="user", position="first", count=1),
-                PerSourceFilter(source=source_generator.name, position="last", count=3),
-                PerSourceFilter(source=source_reviewer, position="last", count=3),
+                PerSourceFilter(source=source_generator.name, position="last", count=1),
+                #PerSourceFilter(source=name, position="last", count=1),
+                PerSourceFilter(source=source_reviewer, position="last", count=1),
             ]
         ),
     )
@@ -142,51 +143,73 @@ def build_graphflow(model_client):
     start_agent = AssistantAgent(
         "DummyInitialRequestAgent",
         model_client=model_client,
-        system_message=f"""You are a dummy agent. You don't say or return any text. Reply ONLY with the empty string.""",
+        system_message=f"""You don't say or return any text. Reply ONLY with the phrase 'CONTINUE'.""",
+    )
+
+    filtered_start_agent = MessageFilterAgent(
+        name="FilteredStartAgent",
+        wrapped_agent=start_agent,
+        filter=MessageFilterConfig(
+            per_source=[
+                PerSourceFilter(source="user", position="first", count=1),
+            ]
+        ),
     )
 
     (
         static_instr_mix_agent,
-        data_allocation_agent,
-        memory_read_agent,
-        memory_write_agent,
-        data_reuse_agent,
+        #data_allocation_agent,
+        #memory_read_agent,
+        #memory_write_agent,
+        #data_reuse_agent,
     ) = make_generator_agents(model_client)
 
     (
         static_instr_mix_reviewer_agent,
-        data_allocation_reviewer_agent,
-        memory_read_reviewer_agent,
-        memory_write_reviewer_agent,
-        data_reuse_reviewer_agent,
+        #data_allocation_reviewer_agent,
+        #memory_read_reviewer_agent,
+        #memory_write_reviewer_agent,
+        #data_reuse_reviewer_agent,
     ) = make_review_agents(model_client)
 
     # MessageFilterAgents for each review chain, sources are generator and reviewer agent names
-    static_instr_mix_filter_agent = make_message_filter_agent(
-        "StaticInstructionMixFilterAgent",
-        source_generator=static_instr_mix_agent,
-        source_reviewer="StaticInstructionMixReviewerAgent"
+    #static_instr_mix_filter_agent = make_message_filter_agent(
+    #    "StaticInstructionMixFilterAgent",
+    #    source_generator=static_instr_mix_agent,
+    #    source_reviewer="StaticInstructionMixReviewerAgent"
+    #)
+    static_instr_mix_filter_agent = MessageFilterAgent(
+        name="StaticInstructionMixFilterAgent",
+        wrapped_agent=static_instr_mix_agent,
+        filter=MessageFilterConfig(
+            per_source=[
+                PerSourceFilter(source="user", position="first", count=1),
+                PerSourceFilter(source=static_instr_mix_agent.name, position="last", count=1),
+                #PerSourceFilter(source=name, position="last", count=1),
+                PerSourceFilter(source=static_instr_mix_reviewer_agent.name, position="last", count=1),
+            ]
+        ),
     )
-    data_allocation_filter_agent = make_message_filter_agent(
-        "DataAllocationFilterAgent",
-        source_generator=data_allocation_agent,
-        source_reviewer="DataAllocationReviewerAgent"
-    )
-    memory_read_filter_agent = make_message_filter_agent(
-        "MemoryReadFilterAgent",
-        source_generator=memory_read_agent,
-        source_reviewer="MemoryReadReviewerAgent"
-    )
-    memory_write_filter_agent = make_message_filter_agent(
-        "MemoryWriteFilterAgent",
-        source_generator=memory_write_agent,
-        source_reviewer="MemoryWriteReviewerAgent"
-    )
-    data_reuse_filter_agent = make_message_filter_agent(
-        "DataReuseFilterAgent",
-        source_generator=data_reuse_agent,
-        source_reviewer="DataReuseReviewerAgent"
-    )
+    #data_allocation_filter_agent = make_message_filter_agent(
+    #    "DataAllocationFilterAgent",
+    #    source_generator=data_allocation_agent,
+    #    source_reviewer="DataAllocationReviewerAgent"
+    #)
+    #memory_read_filter_agent = make_message_filter_agent(
+    #    "MemoryReadFilterAgent",
+    #    source_generator=memory_read_agent,
+    #    source_reviewer="MemoryReadReviewerAgent"
+    #)
+    #memory_write_filter_agent = make_message_filter_agent(
+    #    "MemoryWriteFilterAgent",
+    #    source_generator=memory_write_agent,
+    #    source_reviewer="MemoryWriteReviewerAgent"
+    #)
+    #data_reuse_filter_agent = make_message_filter_agent(
+    #    "DataReuseFilterAgent",
+    #    source_generator=data_reuse_agent,
+    #    source_reviewer="DataReuseReviewerAgent"
+    #)
 
     summary_agent = AssistantAgent(
         name="KernelSummaryAgent",
@@ -203,71 +226,114 @@ def build_graphflow(model_client):
         model_client=model_client,
     )
 
+    filtered_summary_agent = MessageFilterAgent(
+        name="FilteredKernelSummaryAgent",
+        wrapped_agent=summary_agent,
+        filter=MessageFilterConfig(
+            per_source=[
+                PerSourceFilter(source="user", position="first", count=1),
+                PerSourceFilter(source=static_instr_mix_agent.name, position="last", count=1),
+                #PerSourceFilter(source=data_allocation_agent.name, position="last", count=1),
+                #PerSourceFilter(source=memory_read_agent.name, position="last", count=1),
+                #PerSourceFilter(source=memory_write_agent.name, position="last", count=1),
+                #PerSourceFilter(source=data_reuse_agent.name, position="last", count=1),
+            ]
+        ),
+    )
+
+
     # Build the agent graph as described
     builder = DiGraphBuilder()
 
     #builder.add_node(user_input_agent)
-    builder.add_node(start_agent)
-    builder.add_node(static_instr_mix_agent)
+    builder.add_node(filtered_start_agent)
+
+    #builder.add_node(static_instr_mix_agent)
     builder.add_node(static_instr_mix_reviewer_agent)
     builder.add_node(static_instr_mix_filter_agent)
 
-    builder.add_node(data_allocation_agent)
-    builder.add_node(data_allocation_reviewer_agent)
-    builder.add_node(data_allocation_filter_agent)
+    ##builder.add_node(data_allocation_agent)
+    #builder.add_node(data_allocation_reviewer_agent)
+    #builder.add_node(data_allocation_filter_agent)
 
-    builder.add_node(memory_read_agent)
-    builder.add_node(memory_read_reviewer_agent)
-    builder.add_node(memory_read_filter_agent)
+    ##builder.add_node(memory_read_agent)
+    #builder.add_node(memory_read_reviewer_agent)
+    #builder.add_node(memory_read_filter_agent)
 
-    builder.add_node(memory_write_agent)
-    builder.add_node(memory_write_reviewer_agent)
-    builder.add_node(memory_write_filter_agent)
+    ##builder.add_node(memory_write_agent)
+    #builder.add_node(memory_write_reviewer_agent)
+    #builder.add_node(memory_write_filter_agent)
 
-    builder.add_node(data_reuse_agent)
-    builder.add_node(data_reuse_reviewer_agent)
-    builder.add_node(data_reuse_filter_agent)
+    ##builder.add_node(data_reuse_agent)
+    #builder.add_node(data_reuse_reviewer_agent)
+    #builder.add_node(data_reuse_filter_agent)
 
-    builder.add_node(summary_agent)
+    builder.add_node(filtered_summary_agent)
 
-    #builder.set_entry_point(user_input_agent)
+    builder.add_edge(filtered_start_agent, static_instr_mix_filter_agent)
+    builder.add_edge(static_instr_mix_filter_agent, static_instr_mix_reviewer_agent)
+    builder.add_edge(static_instr_mix_reviewer_agent, static_instr_mix_filter_agent, condition="REVISE")
+    builder.add_edge(static_instr_mix_reviewer_agent, filtered_summary_agent, condition="APPROVE")
+
+    #builder.add_edge(start_agent, data_allocation_filter_agent)
+    #builder.add_edge(data_allocation_filter_agent, data_allocation_reviewer_agent)
+    #builder.add_edge(data_allocation_reviewer_agent, data_allocation_filter_agent, condition="REVISE")
+    #builder.add_edge(data_allocation_reviewer_agent, filtered_summary_agent, condition="APPROVE")
+
+    #builder.add_edge(start_agent, memory_read_filter_agent)
+    #builder.add_edge(memory_read_filter_agent, memory_read_reviewer_agent)
+    #builder.add_edge(memory_read_reviewer_agent, memory_read_filter_agent, condition="REVISE")
+    #builder.add_edge(memory_read_reviewer_agent, filtered_summary_agent, condition="APPROVE")
+
+    #builder.add_edge(start_agent, memory_write_filter_agent)
+    #builder.add_edge(memory_write_filter_agent, memory_write_reviewer_agent)
+    #builder.add_edge(memory_write_reviewer_agent, memory_write_filter_agent, condition="REVISE")
+    #builder.add_edge(memory_write_reviewer_agent, filtered_summary_agent, condition="APPROVE")
+
+    #builder.add_edge(start_agent, data_reuse_filter_agent)
+    #builder.add_edge(data_reuse_filter_agent, data_reuse_reviewer_agent)
+    #builder.add_edge(data_reuse_reviewer_agent, data_reuse_filter_agent, condition="REVISE")
+    #builder.add_edge(data_reuse_reviewer_agent, filtered_summary_agent, condition="APPROVE")
+
+
+
 
     # User input fans out to all initial generator agents
-    builder.add_edge(start_agent, static_instr_mix_agent)
-    builder.add_edge(start_agent, data_allocation_agent)
-    builder.add_edge(start_agent, memory_read_agent)
-    builder.add_edge(start_agent, memory_write_agent)
-    builder.add_edge(start_agent, data_reuse_agent)
+    #builder.add_edge(start_agent, static_instr_mix_agent)
+    #builder.add_edge(start_agent, data_allocation_agent)
+    #builder.add_edge(start_agent, memory_read_agent)
+    #builder.add_edge(start_agent, memory_write_agent)
+    #builder.add_edge(start_agent, data_reuse_agent)
 
-    # Validation/revision/review loops for each generator agent
-    builder.add_edge(static_instr_mix_agent, static_instr_mix_reviewer_agent)
-    builder.add_edge(static_instr_mix_reviewer_agent, static_instr_mix_agent, condition="REVISE")
-    builder.add_edge(static_instr_mix_reviewer_agent, static_instr_mix_filter_agent, condition="APPROVE")
+    ## Validation/revision/review loops for each generator agent
+    #builder.add_edge(static_instr_mix_agent, static_instr_mix_reviewer_agent)
+    #builder.add_edge(static_instr_mix_reviewer_agent, static_instr_mix_agent, condition="REVISE")
+    #builder.add_edge(static_instr_mix_reviewer_agent, static_instr_mix_filter_agent, condition="APPROVE")
 
-    builder.add_edge(data_allocation_agent, data_allocation_reviewer_agent)
-    builder.add_edge(data_allocation_reviewer_agent, data_allocation_agent, condition="REVISE")
-    builder.add_edge(data_allocation_reviewer_agent, data_allocation_filter_agent, condition="APPROVE")
+    #builder.add_edge(data_allocation_agent, data_allocation_reviewer_agent)
+    #builder.add_edge(data_allocation_reviewer_agent, data_allocation_agent, condition="REVISE")
+    #builder.add_edge(data_allocation_reviewer_agent, data_allocation_filter_agent, condition="APPROVE")
 
-    builder.add_edge(memory_read_agent, memory_read_reviewer_agent)
-    builder.add_edge(memory_read_reviewer_agent, memory_read_agent, condition="REVISE")
-    builder.add_edge(memory_read_reviewer_agent, memory_read_filter_agent, condition="APPROVE")
+    #builder.add_edge(memory_read_agent, memory_read_reviewer_agent)
+    #builder.add_edge(memory_read_reviewer_agent, memory_read_agent, condition="REVISE")
+    #builder.add_edge(memory_read_reviewer_agent, memory_read_filter_agent, condition="APPROVE")
 
-    builder.add_edge(memory_write_agent, memory_write_reviewer_agent)
-    builder.add_edge(memory_write_reviewer_agent, memory_write_agent, condition="REVISE")
-    builder.add_edge(memory_write_reviewer_agent, memory_write_filter_agent, condition="APPROVE")
+    #builder.add_edge(memory_write_agent, memory_write_reviewer_agent)
+    #builder.add_edge(memory_write_reviewer_agent, memory_write_agent, condition="REVISE")
+    #builder.add_edge(memory_write_reviewer_agent, memory_write_filter_agent, condition="APPROVE")
 
-    builder.add_edge(data_reuse_agent, data_reuse_reviewer_agent)
-    builder.add_edge(data_reuse_reviewer_agent, data_reuse_agent, condition="REVISE")
-    builder.add_edge(data_reuse_reviewer_agent, data_reuse_filter_agent, condition="APPROVE")
+    #builder.add_edge(data_reuse_agent, data_reuse_reviewer_agent)
+    #builder.add_edge(data_reuse_reviewer_agent, data_reuse_agent, condition="REVISE")
+    #builder.add_edge(data_reuse_reviewer_agent, data_reuse_filter_agent, condition="APPROVE")
 
-    # All filtered/approved outputs go to the summary agent
-    builder.add_edge(static_instr_mix_filter_agent, summary_agent)
-    builder.add_edge(data_allocation_filter_agent, summary_agent)
-    builder.add_edge(memory_read_filter_agent, summary_agent)
-    builder.add_edge(memory_write_filter_agent, summary_agent)
-    builder.add_edge(data_reuse_filter_agent, summary_agent)
+    ## All filtered/approved outputs go to the summary agent
+    #builder.add_edge(static_instr_mix_filter_agent, summary_agent)
+    #builder.add_edge(data_allocation_filter_agent, summary_agent)
+    #builder.add_edge(memory_read_filter_agent, summary_agent)
+    #builder.add_edge(memory_write_filter_agent, summary_agent)
+    #builder.add_edge(data_reuse_filter_agent, summary_agent)
 
-    builder.set_entry_point(start_agent)
+    builder.set_entry_point(filtered_start_agent)
 
     graph = builder.build()
 
