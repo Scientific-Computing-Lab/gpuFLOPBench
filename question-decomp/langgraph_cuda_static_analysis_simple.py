@@ -43,13 +43,13 @@ class KernelAnalysisState(TypedDict, total=False):
     exec_args: str
     grid_size: str
     block_size: str
-    sass_imix: str
-    sass_code: str
+    #sass_imix: str
+    #sass_code: str
 
     # these will be filled in by the nodes
     updated_source_code: str
     kernel_op_estimates: str
-    updated_sass_imix: str
+    #updated_sass_imix: str
     final_op_counts: str
 
 example_before = """
@@ -117,7 +117,7 @@ def exec_args_parser_replacer(state: KernelAnalysisState, llm: ChatOpenAI):
         ("human", 
          "Target Kernel name: {kernel_name}\n\n"
          "Execution arguments: {exec_args}\n\n"
-         "Please return the updated source code with evaluated input arguments, variables, references, and preprocessor defines. Ensure to reaplce as many variables as possible with their literal values in the kernel invocation call."
+         "Please return the updated source code with evaluated input arguments, variables, references, and preprocessor defines. Ensure to reaplce as many variables as possible with their literal values in the kernel invocation call and any intermediate variables that get calculated."
          "Source code:\n{source_code}\n\n")
     ])
     chain = prompt | llm
@@ -144,14 +144,14 @@ def static_imix_estimator(state: KernelAnalysisState, llm: ChatOpenAI):
 
     prompt = ChatPromptTemplate.from_messages([
         ("system",
-         "You are a static analysis assistant for CUDA kernels. Given the explicit C/C++ CUDA source code for a program and kernel, estimate the number of integer operations (INTOP), single-precision float operations (SP-FLOP), and double-precision float operations (DP-FLOP) performed by one CUDA kernel invocation. "
+         "You are a static analysis assistant for CUDA kernels. Given the explicit C/C++ CUDA source code for a program and kernel, estimate the number of integer operations (INTOP), single-precision float operations (SP-FLOP), and double-precision float operations (DP-FLOP) performed by one CUDA kernel invocation for a single thread. "
          "Report counts for FMA (fused-multiply-add), Add (ADD), Multiply (MUL), and Divide (DIV) operations for each data type. If FMA is likely to be used by the compiler (multiplication and addition on the same variables), count it as one op. "
          "Output strictly in this format:\n"
          "INTOP ADD: XXX\nINTOP MUL: XXX\nINTOP DIV: XXX\nINTOP FMA: XXX\nSP-FLOP ADD: XXX\nSP-FLOP MUL: XXX\nSP-FLOP DIV: XXX\nSP-FLOP FMA: XXX\nDP-FLOP ADD: XXX\nDP-FLOP MUL: XXX\nDP-FLOP DIV: XXX\nDP-FLOP FMA: XXX"
         ),
         ("human",
          "Target Kernel name: {kernel_name}\nGrid size: {grid_size}\nBlock size: {block_size}\n\n"
-         "Estimate the static instruction mix per target kernel invocation as described above."
+         "Estimate the static instruction mix of one thread for one target kernel invocation as described above."
          "CUDA Source Code:\n{updated_source}\n\n")
     ])
     chain = prompt | llm
@@ -168,44 +168,44 @@ def static_imix_estimator(state: KernelAnalysisState, llm: ChatOpenAI):
     #state["kernel_op_estimates"] = kernel_ops
     #return state
 
-# 3. SASS Dynamic IMIX Analyzer Node
-def sass_dynamic_imix_analyzer(state: KernelAnalysisState, llm: ChatOpenAI):
-    updated_source = state["updated_source_code"]
-    sass_imix = state["sass_imix"]
-    sass_code = state["sass_code"]
-    grid_size = state["grid_size"]
-    block_size = state["block_size"]
-    kernel_name = state["kernel_name"]
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are a CUDA SASS instruction mix analyzer. Given the static SASS IMIX (instruction mix), SASS code for a kernel, and the corresponding C/C++ CUDA source code, return an updated SASS IMIX string containing the estimated dynamic execution counts for each instruction. "
-         "Take into account the kernel input arguments, explicit loop bounds, conditional branching / warp divergence, and CUDA launch parameters (grid and block size). "
-         "Consider jumps and loops in the SASS code that could repeat instructions. Output each instruction and its count as shown:\n"
-         "BRA: XXX\nF2I.FTZ.U32.TRUNC.NTZ: XXX\nI2F.U32.RP: XXX\nIADD3: XXX\n... (one per line)"),
-        ("human",
-         "Target Kernel Name: {kernel_name}\n\n"
-         "SASS IMIX:\n{sass_imix}\n\n"
-         "Grid size: {grid_size}\nBlock size: {block_size}\n\n"
-         "Update the SASS IMIX to reflect dynamic execution counts per kernel launch as described."
-         "CUDA Source Code:\n{updated_source}\n\n\n"
-         "SASS Code:\n{sass_code}\n\n")
-    ])
-    chain = prompt | llm
-    updated_sass_imix = chain.invoke({
-        "updated_source": updated_source,
-        "sass_imix": sass_imix,
-        "sass_code": sass_code,
-        "grid_size": grid_size,
-        "block_size": block_size,
-        "kernel_name": kernel_name,
-    }).content
-
-    print(f"Updated SASS IMIX:\n{updated_sass_imix}\n")
-
-    return {"updated_sass_imix": updated_sass_imix}
-    #state["updated_sass_imix"] = updated_sass_imix
-    #return state
+## 3. SASS Dynamic IMIX Analyzer Node
+#def sass_dynamic_imix_analyzer(state: KernelAnalysisState, llm: ChatOpenAI):
+#    updated_source = state["updated_source_code"]
+#    sass_imix = state["sass_imix"]
+#    sass_code = state["sass_code"]
+#    grid_size = state["grid_size"]
+#    block_size = state["block_size"]
+#    kernel_name = state["kernel_name"]
+#
+#    prompt = ChatPromptTemplate.from_messages([
+#        ("system",
+#         "You are a CUDA SASS instruction mix analyzer. Given the static SASS IMIX (instruction mix), SASS code for a kernel, and the corresponding C/C++ CUDA source code, return an updated SASS IMIX string containing the estimated dynamic execution counts for each instruction. "
+#         "Take into account the kernel input arguments, explicit loop bounds, conditional branching / warp divergence, and CUDA launch parameters (grid and block size). "
+#         "Consider jumps and loops in the SASS code that could repeat instructions. Output each instruction and its count as shown:\n"
+#         "BRA: XXX\nF2I.FTZ.U32.TRUNC.NTZ: XXX\nI2F.U32.RP: XXX\nIADD3: XXX\n... (one per line)"),
+#        ("human",
+#         "Target Kernel Name: {kernel_name}\n\n"
+#         "SASS IMIX:\n{sass_imix}\n\n"
+#         "Grid size: {grid_size}\nBlock size: {block_size}\n\n"
+#         "Update the SASS IMIX to reflect dynamic execution counts per kernel launch as described."
+#         "CUDA Source Code:\n{updated_source}\n\n\n"
+#         "SASS Code:\n{sass_code}\n\n")
+#    ])
+#    chain = prompt | llm
+#    updated_sass_imix = chain.invoke({
+#        "updated_source": updated_source,
+#        "sass_imix": sass_imix,
+#        "sass_code": sass_code,
+#        "grid_size": grid_size,
+#        "block_size": block_size,
+#        "kernel_name": kernel_name,
+#    }).content
+#
+#    print(f"Updated SASS IMIX:\n{updated_sass_imix}\n")
+#
+#    return {"updated_sass_imix": updated_sass_imix}
+#    #state["updated_sass_imix"] = updated_sass_imix
+#    #return state
 
 # 4. OPS Estimator Node
 def ops_estimator(state: KernelAnalysisState, llm: ChatOpenAI):
@@ -214,25 +214,26 @@ def ops_estimator(state: KernelAnalysisState, llm: ChatOpenAI):
     print("STATE TYPE")
 
     kernel_ops = state["kernel_op_estimates"]
-    updated_sass_imix = state["updated_sass_imix"]
+    #updated_sass_imix = state["updated_sass_imix"]
     updated_source = state["updated_source_code"]
 
     prompt = ChatPromptTemplate.from_messages([
         ("system",
-         "You are an operation count estimator for CUDA kernels. Given the static instruction mix estimates (including FMA, ADD, MUL, DIV for INT, SP, DP) and the dynamic SASS IMIX estimates, return an estimate of the total number of INTOP, SP-FLOP, and DP-FLOP performed by a single invocation of the kernel. \n"
-         "Recall that each "
+         "You are an operation count estimator for CUDA kernels. Given the static instruction mix (IMIX) estimates (including FMA, ADD, MUL, DIV for INT, SP, DP), return an estimate of the total number of INTOP, SP-FLOP, and DP-FLOP performed by a single invocation of the kernel. \n"
+         "Calculate the values of any intermediate variables needed to compute the final counts (e.g: loop bounds, variables)"
+         "Keep in mind that not all threads in a block may execute due to loop bounds, conditional branches, or warp divergence. Consider well the operations that a thread might (or might not) execute."
          "Sum up the various ADD, MUL, and FMA ops for each operation type; FMA ops count as 2 operations each. Output strictly in this format:\n"
          "INTOP: XXX\nSP-FLOP: XXX\nDP-FLOP: XXX"),
         ("human",
          "Static instruction mix:\n{kernel_ops}\n\n"
-         "Dynamic SASS IMIX:\n{updated_sass_imix}\n\n"
          "Estimate total INTOP, SP-FLOP, DP-FLOP as described."
          "CUDA Source Code:\n{updated_source}\n\n")
     ])
+         #"Dynamic SASS IMIX:\n{updated_sass_imix}\n\n"
     chain = prompt | llm
     final_ops = chain.invoke({
         "kernel_ops": kernel_ops,
-        "updated_sass_imix": updated_sass_imix,
+        #"updated_sass_imix": updated_sass_imix,
         "updated_source": updated_source,
     }).content
 
@@ -253,10 +254,10 @@ def make_static_imix_estimator_node(llm):
         return static_imix_estimator(state, llm)
     return node
 
-def make_sass_dynamic_imix_node(llm):
-    def node(state):
-        return sass_dynamic_imix_analyzer(state, llm)
-    return node
+#def make_sass_dynamic_imix_node(llm):
+#    def node(state):
+#        return sass_dynamic_imix_analyzer(state, llm)
+#    return node
 
 def make_ops_estimator_node(llm):
     def node(state):
@@ -269,14 +270,15 @@ def build_cuda_kernel_ops_graph(llm, show_mermaid_png: bool = False):
 
     workflow.add_node("exec_args_parser", make_exec_args_parser_node(llm))
     workflow.add_node("static_imix_estimator", make_static_imix_estimator_node(llm))
-    workflow.add_node("sass_dynamic_imix", make_sass_dynamic_imix_node(llm))
+#    workflow.add_node("sass_dynamic_imix", make_sass_dynamic_imix_node(llm))
     workflow.add_node("ops_estimator", make_ops_estimator_node(llm))
 
     # Graph edges
     #workflow.add_edge("exec_args_parser", ["static_imix_estimator", "sass_dynamic_imix", "ops_estimator"])
     workflow.add_edge("exec_args_parser", "static_imix_estimator")
-    workflow.add_edge("exec_args_parser", "sass_dynamic_imix")
-    workflow.add_edge(["exec_args_parser", "static_imix_estimator", "sass_dynamic_imix"], "ops_estimator")
+    #workflow.add_edge("exec_args_parser", "sass_dynamic_imix")
+    workflow.add_edge(["exec_args_parser", "static_imix_estimator"], "ops_estimator")
+    #workflow.add_edge(["exec_args_parser", "static_imix_estimator", "sass_dynamic_imix"], "ops_estimator")
 #    workflow.add_edge("exec_args_parser", "ops_estimator")
 #    workflow.add_edge("static_imix_estimator", "ops_estimator")
 #    workflow.add_edge("sass_dynamic_imix", "ops_estimator")
