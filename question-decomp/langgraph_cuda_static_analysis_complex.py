@@ -15,6 +15,7 @@ import operator
 from typing import Annotated
 
 from IPython.display import Image, display
+from langchain_core.runnables.graph import MermaidDrawMethod
 
 
 # please create a file called .openrouter-api-key in the current directory
@@ -55,7 +56,6 @@ class KernelAnalysisState(TypedDict, total=False):
     kernel_annotated_num_threads: str
     kernel_annotated_num_ops: str
     summed_kernel_ops: str
-    final_ops_prediction: str
 
 example_before = """
 Example Executable Input Arguments: [664]
@@ -353,7 +353,7 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, llm: ChatOpenAI
          "Annotate the code with comments indicating where warp divergence may occur. "
          "Code comment annotations should appear on the line before as in the example below:"
          "// WARP DIVERGENCE POINT"
-         "if (condition) {...}"
+         "if (condition) {{...}}"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
@@ -391,7 +391,7 @@ def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
          "At each warp divergence point, add a comment identifying the potential number of threads that will enter or not enter the warp divergence section."
          "Code comment annotations should appear on the line before as in the example below:"
          "// WARP DIVERGENCE POINT -- NUM THREADS ENTERING: XXX -- NUM THREADS WAITING: YYY"
-         "if (condition) {...}"
+         "if (condition) {{...}}"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
@@ -521,43 +521,46 @@ def make_kernel_ops_summarizer_node(llm):
 def build_cuda_kernel_ops_graph(llm, show_mermaid_png: bool = False):
     workflow = StateGraph(KernelAnalysisState)
 
-    workflow.add_node("src_input_args_concretizer", make_src_input_args_concretizer_node(llm))
-    workflow.add_node("src_single_kernel_execution_modifier", make_src_single_kernel_execution_modifier_node(llm))
-    workflow.add_node("first_kernel_invocation_snippet_extractor", make_first_kernel_invocation_snippet_extractor_node(llm))
-    workflow.add_node("kernel_source_snippet_extractor", make_kernel_source_snippet_extractor_node(llm))
-    workflow.add_node("kernel_source_snippet_concretizer", make_kernel_source_snippet_concretizer_node(llm))
-    workflow.add_node("kernel_warp_divergence_annotator", make_kernel_warp_divergence_annotator_node(llm))
-    workflow.add_node("kernel_num_threads_annotator", make_kernel_num_threads_annotator_node(llm))
-    workflow.add_node("kernel_num_ops_annotator", make_kernel_num_ops_annotator_node(llm))
-    workflow.add_node("kernel_ops_summarizer", make_kernel_ops_summarizer_node(llm))
+    workflow.add_node("src_input_args_concretizer_1", make_src_input_args_concretizer_node(llm))
+    workflow.add_node("src_single_kernel_execution_modifier_2", make_src_single_kernel_execution_modifier_node(llm))
+    workflow.add_node("first_kernel_invocation_snippet_extractor_3", make_first_kernel_invocation_snippet_extractor_node(llm))
+    workflow.add_node("kernel_source_snippet_extractor_4", make_kernel_source_snippet_extractor_node(llm))
+    workflow.add_node("kernel_source_snippet_concretizer_5", make_kernel_source_snippet_concretizer_node(llm))
+    workflow.add_node("kernel_warp_divergence_annotator_6", make_kernel_warp_divergence_annotator_node(llm))
+    workflow.add_node("kernel_num_threads_annotator_7", make_kernel_num_threads_annotator_node(llm))
+    workflow.add_node("kernel_num_ops_annotator_8", make_kernel_num_ops_annotator_node(llm))
+    workflow.add_node("kernel_ops_summarizer_9", make_kernel_ops_summarizer_node(llm))
 
 
     # Graph edges
-    workflow.add_edge("src_input_args_concretizer", "src_single_kernel_execution_modifier")
+    workflow.add_edge("src_input_args_concretizer_1", "src_single_kernel_execution_modifier_2")
 
-    workflow.add_edge("src_single_kernel_execution_modifier", "first_kernel_invocation_snippet_extractor")
+    workflow.add_edge("src_single_kernel_execution_modifier_2", "first_kernel_invocation_snippet_extractor_3")
 
-    workflow.add_edge("first_kernel_invocation_snippet_extractor", "kernel_source_snippet_extractor")
+    workflow.add_edge("first_kernel_invocation_snippet_extractor_3", "kernel_source_snippet_extractor_4")
 
-    workflow.add_edge(["kernel_source_snippet_extractor","first_kernel_invocation_snippet_extractor"],  "kernel_source_snippet_concretizer")
+    workflow.add_edge(["kernel_source_snippet_extractor_4","first_kernel_invocation_snippet_extractor_3"],  "kernel_source_snippet_concretizer_5")
 
-    workflow.add_edge("kernel_source_snippet_concretizer", "kernel_warp_divergence_annotator")
+    workflow.add_edge("kernel_source_snippet_concretizer_5", "kernel_warp_divergence_annotator_6")
 
-    workflow.add_edge(["kernel_warp_divergence_annotator","first_kernel_invocation_snippet_extractor"],  "kernel_num_threads_annotator")
+    workflow.add_edge(["kernel_warp_divergence_annotator_6","first_kernel_invocation_snippet_extractor_3"],  "kernel_num_threads_annotator_7")
 
-    workflow.add_edge(["first_kernel_invocation_snippet_extractor","kernel_source_snippet_concretizer"], "kernel_num_ops_annotator")
+    workflow.add_edge(["first_kernel_invocation_snippet_extractor_3","kernel_source_snippet_concretizer_5"], "kernel_num_ops_annotator_8")
 
-    workflow.add_edge(["kernel_num_threads_annotator", "kernel_num_ops_annotator", "first_kernel_invocation_snippet_extractor"], "kernel_ops_summarizer")
+    workflow.add_edge(["kernel_num_threads_annotator_7", "kernel_num_ops_annotator_8", "first_kernel_invocation_snippet_extractor_3"], "kernel_ops_summarizer_9")
 
-    workflow.add_edge("kernel_ops_summarizer", END)
+    workflow.add_edge("kernel_ops_summarizer_9", END)
 
     # Set entrypoint
-    workflow.set_entry_point("src_input_args_concretizer")
+    workflow.set_entry_point("src_input_args_concretizer_1")
     compiled = workflow.compile()
 
     # Draw and save the graph as a PNG image if requested
     if show_mermaid_png:
+        #display(Image(compiled.get_graph().draw_png()))
         display(Image(compiled.get_graph().draw_mermaid_png()))
+        #display(Image(compiled.get_graph().draw_mermaid_png(max_retries=5, retry_delay=2.0)))
+        #compiled.get_graph().print_ascii()
 
     return compiled
 
