@@ -30,7 +30,8 @@ llm = ChatOpenAI(
   temperature=0.2,
   top_p=0.1,
   #model_name="openai/o4-mini>",
-  model_name="openai/gpt-4o-mini", # cheap model for testing
+  model_name="openai/gpt-4.1-mini"
+  #model_name="openai/gpt-4o-mini", # cheap model for testing
   #model_kwargs={
   #  'top_p' : 0.1,
   #},
@@ -87,8 +88,8 @@ Example Executable Input Arguments: [664]
 #include <cstdlib>
 
 // templated function
-template <std::size_t MYNUM, typename T>
-int add(T a, T b) {
+template <std::size_t MYNUM, typename T=int>
+int add(int a, int b) {
     // values passed in as template parameters or function arguments are replaced with their concrete values
     return a + 664*((int)3);
 }
@@ -152,15 +153,33 @@ def make_src_input_args_concretizer_node(llm):
     return node
 
 
+
+
+
+
+
+with open('./example_codes/single_kernel_before_example.cu', 'r') as file:
+    single_kernel_example_before = file.read()
+
+with open('./example_codes/single_kernel_after_example.cu', 'r') as file:
+    single_kernel_example_after = file.read()
+
+
 def src_single_kernel_execution_modifier(state: KernelAnalysisState, llm: ChatOpenAI): 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are a code transformer that modifies the given C/C++ CUDA source code to ensure that only a single kernel invocation of the target kernel name is executed. "
-         "This means removing any loops or multiple invocations of the kernel, to leave only the first invocation of the kernel in the code. This also means ensuring that the kernel is invoked with the correct grid and block sizes."
-         "Only return the modified source code, nothing else.\n"),
+         "This means removing any loops or multiple invocations of the kernel, to leave only the first invocation of the target kernel in the code. This also means ensuring that the kernel is invoked with the correct arguments, grid, and block sizes."
+         "The modifications should be done by commenting out parts of the original code to be changed, and adding the changes on a new line below the original commented code."
+         "Only return the modified source code, nothing else.\nAn example is provided below:\n"
+         "Example Before:\n"
+         "Target Kernel Name: example_kernel\n"
+         "{single_kernel_example_before}\n\n"
+         "Example After:\n"
+         "{single_kernel_example_after}\n\n"),
         ("human", 
          "Target Kernel Name: {kernel_name}\n"
-         "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
+         #"Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
          "Please return the updated source code with only a single kernel invocation."
          "Source code:\n{updated_source}\n"
          )
@@ -169,9 +188,11 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, llm: ChatOp
     single_kernel_source = chain.invoke({
         "updated_source": state["src_concretized_input_args"],
         "kernel_name": state["kernel_name"],
-        "grid_size": state["grid_size"],
-        "block_size": state["block_size"], 
-        "total_num_threads": state["total_num_threads"], 
+        #"grid_size": state["grid_size"],
+        #"block_size": state["block_size"], 
+        #"total_num_threads": state["total_num_threads"], 
+        "single_kernel_example_before": single_kernel_example_before,
+        "single_kernel_example_after": single_kernel_example_after,
     }).content
 
     print("\n\n\n")
@@ -191,40 +212,51 @@ def make_src_single_kernel_execution_modifier_node(llm):
 
 
 
+
+
+
+
+
 def first_kernel_invocation_snippet_extractor(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are a code scraper that extracts the first kernel invocation snippet from the given C/C++ CUDA source code. "
          "This means identifying the first kernel invocation/call and returning only that line(s) of the code, including the kernel name, grid size, block size, any necessary concrete input parameters, and template inputs."
+         "Ensure that any concrete values are included in the invocation, such as the grid and block sizes, and any other input arguments that are passed to the kernel."
          "If the kernel invocation is made with pointers, structs, or objeects, include the variable names and a comment describing the datatype, size, and layout of the data they point to."
          "Only return the extracted CUDA kernel invocation snippet and related input descriptions, nothing else.\n"
          "Here is an example of the output format to return:"
-         """
-    // Template arguments for the exampleKernel invocation:
-    // DataType (first template argument, instantiated as 'float' for this call):
-    //          Specifies the data type of the elements in the input and output arrays.
-    //          For this call, it's 'float'.
-    // KERNEL_STENCIL_SIZE (second template argument, instantiated as '3' for this call):
-    //          An integer constant specifying the number of random neighbors (from the 3x3 neighborhood,
-    //          including the element itself as a possibility) to select and average.
-    //          For this call, it's '3'.
+         """// Template arguments for the exampleKernel invocation:
+// DataType (first template argument, instantiated as 'float' for this call):
+//          Specifies the data type of the elements in the input and output arrays.
+//          For this call, it's 'float'.
+// KERNEL_STENCIL_SIZE (second template argument, instantiated as '3' for this call):
+//          An integer constant specifying the number of random neighbors (from the 3x3 neighborhood,
+//          including the element itself as a possibility) to select and average.
+//          For this call, it's '3'.
 
-    // Parameter descriptions for the exampleKernel<DataType, KERNEL_STENCIL_SIZE> invocation:
-    // d_input: DataType* (resolved to float* for this call), pointer to the input 2D array data on the GPU.
-    //          The data is a contiguous block of 'arraySize' (width * height) elements of type DataType.
-    //          Layout: Flattened 1D array in row-major order, logically representing a 'width' x 'height' 2D grid.
-    //          Size on GPU: arraySize * sizeof(DataType) bytes (e.g., 64 * sizeof(float) bytes).
-    // d_output: DataType* (resolved to float* for this call), pointer to the output 2D array data on the GPU.
-    //           The data is a contiguous block of 'arraySize' (width * height) elements of type DataType.
-    //           Layout: Flattened 1D array in row-major order, logically representing a 'width' x 'height' 2D grid.
-    //           Size on GPU: arraySize * sizeof(DataType) bytes (e.g., 64 * sizeof(float) bytes).
-    // width: int, the width (number of columns) of the logical 2D grid being processed.
-    //        Value for this call: 8.
-    // height: int, the height (number of rows) of the logical 2D grid being processed.
-    //         Value for this call: 8.
-    // seed: unsigned int, the seed value used to initialize pseudo-random number
-    //       generators within each CUDA thread for the stencil operation.
-    exampleKernel<DataType, KERNEL_STENCIL_SIZE><<<gridSize, blockSize>>>(d_input, d_output, width, height, seed);
+// Parameter descriptions for the exampleKernel<DataType, KERNEL_STENCIL_SIZE> invocation:
+// d_input: DataType* (resolved to float* for this call), pointer to the input 2D array data on the GPU.
+//          The data is a contiguous block of 'arraySize' (width * height) elements of type DataType.
+//          Layout: Flattened 1D array in row-major order, logically representing a 'width' x 'height' 2D grid.
+//          Size on GPU: arraySize * sizeof(DataType) bytes (e.g., 64 * sizeof(float) bytes).
+// d_output: DataType* (resolved to float* for this call), pointer to the output 2D array data on the GPU.
+//           The data is a contiguous block of 'arraySize' (width * height) elements of type DataType.
+//           Layout: Flattened 1D array in row-major order, logically representing a 'width' x 'height' 2D grid.
+//           Size on GPU: arraySize * sizeof(DataType) bytes (e.g., 64 * sizeof(float) bytes).
+// width: int, the width (number of columns) of the logical 2D grid being processed.
+//        Value for this call: 8.
+// height: int, the height (number of rows) of the logical 2D grid being processed.
+//         Value for this call: 8.
+// seed: unsigned int, the seed value used to initialize pseudo-random number
+//       generators within each CUDA thread for the stencil operation.
+
+// Description for kernel launch configuration:
+// Grid Size: 128 * 512 = (65536, 1, 1), the number of blocks in the grid for the kernel launch.
+// Block Size: 32 * 32 = (1024, 1, 1), the number of threads in each block for the kernel launch.
+// Total Number of Threads: 65536 * 1 * 1 * 1024 * 1 * 1 = 67108864 threads
+
+exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), blockSize=(1024, 1, 1)>>>(d_input, d_output, width=8, height=8, seed);
 """
          ),
         ("human",
@@ -256,6 +288,11 @@ def make_first_kernel_invocation_snippet_extractor_node(llm):
     def node(state):
         return first_kernel_invocation_snippet_extractor(state, llm)
     return node
+
+
+
+
+
 
 
 
@@ -300,14 +337,32 @@ def make_kernel_source_snippet_extractor_node(llm):
 
 
 
+
+
+
+
+
+with open('./example_codes/source_code_concretization_example_before.cu', 'r') as file:
+    source_code_concretization_example_before = file.read()
+
+with open('./example_codes/source_code_concretization_example_after.cu', 'r') as file:
+    source_code_concretization_example_after = file.read()
+
 def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA kernel source code snippet with their corresponding hard-coded input argument literal values from the given kernel invocation arguments and evaluated/derived source code values."
          "If a value is derived from other value(s), also replace it with the hard-coded value. Make sure all possible variables and arguments are made explicit using the provided hard-coded values and their descriptions. "
-         "If the `auto` keyword is used, replace it with the corresponding concrete type."
+         "If the `auto` keyword is used, replace it with the correct concrete type."
          "Be sure to replace any blockDim and gridDim variables (e.g: `blockDim.x` or `gridDim.y`) with their concrete values, as well as any other variables that are derived from the kernel invocation arguments."
          "If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"
+         "Ensure to comment the original lines that are being replaced with the new concrete values, and add the new lines below the original commented code.\n"
+         "If a variable can be concretized, but is based off an expression, only fill in the variables it uses, do not evaluate the expression to a single value. Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"
+         "Here is an example of the desired types of variable and explicit value concretization source code transformations:\n"
+         "Example Before:\n"
+         "{source_code_concretization_example_before}\n\n"
+         "Example After:\n"
+         "{source_code_concretization_example_after}\n\n"
          ),
         ("human",
             "Target Kernel Name: {kernel_name}\n"
@@ -325,6 +380,8 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"], 
+        "source_code_concretization_example_before": source_code_concretization_example_before,
+        "source_code_concretization_example_after": source_code_concretization_example_after,
     }).content
 
     print("\n\n\n")
