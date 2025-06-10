@@ -2,8 +2,15 @@ template<typename T = float>
 __global__ void example_kernel(const float* __restrict__ in, float* __restrict__ out, int width, int height) {
     //int x = blockIdx.x * blockDim.x + threadIdx.x;
     int x = blockIdx.x * 8 + threadIdx.x;
+    // blockIdx.x range = (0, 249)
+    // threadIdx.x range = (0, 7)
+    // int x range = (0, 1999)
+
     //int y = blockIdx.y * blockDim.y + threadIdx.y;
     int y = blockIdx.y * 10 + threadIdx.y;
+    // blockIdx.y range = (0, 124)
+    // threadIdx.y range = (0, 9)
+    // int y range = (0, 12409)
 
     //auto scale_factor = width * height / 1600;
     float scale_factor = 2000 * 1000 / 1600;

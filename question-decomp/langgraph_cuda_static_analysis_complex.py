@@ -357,6 +357,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
          "Be sure to replace any blockDim and gridDim variables (e.g: `blockDim.x` or `gridDim.y`) with their concrete values, as well as any other variables that are derived from the kernel invocation arguments."
          "If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"
          "Ensure to comment the original lines that are being replaced with the new concrete values, and add the new lines below the original commented code.\n"
+         "Any lines that use blockIdx or threadIdx should have a comment below them indicating the range of values that will be used for those variables.\n"
          "If a variable can be concretized, but is based off an expression, only fill in the variables it uses, do not evaluate the expression to a single value. Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"
          "Here is an example of the desired types of variable and explicit value concretization source code transformations:\n"
          "Example Before:\n"
@@ -368,7 +369,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
             "Target Kernel Name: {kernel_name}\n"
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-            "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to replace as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
+            "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to replace as many variables (including blockDim and gridDim variables) as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
             "Source code:\n{snippet_kernel_src}\n"
             )
     ])
