@@ -58,61 +58,28 @@ class KernelAnalysisState(TypedDict, total=False):
     kernel_annotated_num_ops: str
     summed_kernel_ops: str
 
-example_before = """
-Example Executable Input Arguments: [664]
----- EXAMPLE BEFORE Transformation ----
-#include <stdio.h>
-#include <cstdlib>
 
-// templated function
-template <std::size_t MYNUM, typename T>
-int add(T a, T b) {
-    return a + b*((int)MYNUM);
-}
 
-#define N 1024
-int main(int argc, char** argv) {
-    int M = (argc == 2) ? atoi(argv[1]) : 2;
-    int *data = (int*)malloc(N * sizeof(int));
-    for (int i = 0; i < N; i++) {
-        data[i] = add<3, int>(i, M);
-    }
-    printf("Data initialized.\\n");
-}
-"""
 
-example_after = """
-Example Executable Input Arguments: [664]
----- EXAMPLE AFTER Transformation ----
-#include <stdio.h>
-#include <cstdlib>
 
-// templated function
-template <std::size_t MYNUM, typename T=int>
-int add(int a, int b) {
-    // values passed in as template parameters or function arguments are replaced with their concrete values
-    return a + 664*((int)3);
-}
 
-#define N 1024
-int main(int argc, char** argv) {
-    int M = (argc == 2) ? atoi(argv[1]) : 2;
-    int *data = (int*)malloc(1024 * sizeof(int));
-    // loop bounds and preprocessor defines are also replaced with concrete values
-    for (int i = 0; i < 1024; i++) {
-        data[i] = add<3, int>(i, 664);
-    }
-    printf("Data initialized.\\n");
-}
-"""
+
+with open('./example_codes/step1_example_before.cu', 'r') as file:
+        step1_example_before = file.read()
+with open('./example_codes/step1_example_after.cu', 'r') as file:
+        step1_example_after = file.read()
 
 def src_input_args_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values."
-         "If a value is derived from other value(s), also replace it with the hard-coded value. For CUDA kernel invocations, make sure all possible kernel input arguments are made explicit using the concrete values. "
+         "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values.\n"
+         "When a value is being concretized/replaced, make sure to comment out the original line that is being replaced with the new concrete value, and add the new line below the original commented code.\n"
+         "Show the steps taken in calculating any values as commented lines.\n"
+         "Only replace the variables in arightmetic expressions, and include a comment below any variables that are calculated to single values, indicated by a `// Calculated value(s)` comment.\n"
+         "If a value is derived from other value(s), show the steps to arrive at the hard-coded value. For CUDA kernel invocations, make sure all possible kernel input arguments are made explicit using the concrete values.\n"
          "If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else."
+         "Do not include any additional comments or explanations in the output.\n"
          "If the `auto` keyword is used, replace it with the corresponding concrete type.\n"
          "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
          "```{example_before}```\n\n"
@@ -121,7 +88,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
          "Target Kernel Name: {kernel_name}\n"
          "Execution Arguments: {exec_args}\n"
          "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-         "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to replace as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
+         "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to calculate as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
          "Source code:\n{source_code}\n\n"
          )
     ])
@@ -133,8 +100,8 @@ def src_input_args_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"], 
-        "example_before": example_before,
-        "example_after": example_after,
+        "example_before": step1_example_before,
+        "example_after": step1_example_after,
     }).content
 
     print("\n\n\n")
@@ -406,16 +373,32 @@ def make_kernel_source_snippet_concretizer_node(llm):
 def kernel_warp_divergence_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with warp divergence information. "
-         "This means identifying the potential warp divergence points in the kernel code, such as conditional branches, loops, and other control flow statements that may cause threads within a warp to diverge."
-         "Annotate the code with comments indicating where warp divergence may occur. "
-         "Code comment annotations should appear on the line before as in the example below:"
-         "// WARP DIVERGENCE POINT"
-         "if (condition) {{...}}"
+         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with warp divergence information.\n"
+         "This means identifying the potential warp divergence points in the kernel code, such as conditional branches, loops, ternary, and other control flow statements that will cause threads within a warp to diverge.\n"
+         "If a conditional branch is always true or always false, it is still considered a warp divergence point.\n"
+         "min and max operations are not considered warp divergence points, as they do not cause threads to diverge within a warp.\n"
+         "Annotate the code with comments indicating where warp divergence will occur.\n"
+         "Code comment annotations should appear on the line before as in the examples below:\n"
+         "If statement example:\n"
+         "// WARP DIVERGENCE POINT\n"
+         "if (condition) {{...}}\n\n"
+
+         "While loop example:\n"
+         "// WARP DIVERGENCE POINT\n"
+         "while (condition) {{...}}\n\n"
+
+         "For loop example:\n"
+         "// WARP DIVERGENCE POINT\n"
+         "for (;;) {{...}}\n\n"
+
+         "Ternary example:\n"
+         "// WARP DIVERGENCE POINT\n"
+         "a = b ? c : d;\n"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
-            "Please return the annotated kernel source code with warp divergence indicators."
+            "Please return the annotated kernel source code with warp divergence indicators.\n"
+            "Ensure to mark ALL if statements, while loops, for loops, and ternary operators with the `// WARP DIVERGENCE POINT` comment.\n"
             "Source code:\n{snippet_kernel_src_concretized_values}\n"
             )
     ])
@@ -441,15 +424,29 @@ def make_kernel_warp_divergence_annotator_node(llm):
 
 
 
+
+
+
+
+with open('./example_codes/step7_example_before.cu', 'r') as file:
+    step7_example_before = file.read()
+with open('./example_codes/step7_example_after.cu', 'r') as file:
+    step7_example_after = file.read()
+
 def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of threads that will execute at each part of the kernel code. "
-         "The source code contains annotations for warp divergence, indicated by `// WARP DIVERGENCE POINT` comments. "
-         "At each warp divergence point, add a comment identifying the potential number of threads that will enter or not enter the warp divergence section."
-         "Code comment annotations should appear on the line before as in the example below:"
-         "// WARP DIVERGENCE POINT -- NUM THREADS ENTERING: XXX -- NUM THREADS WAITING: YYY"
-         "if (condition) {{...}}"
+         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of threads that will execute at each part of the kernel code.\n"
+         "The source code contains annotations for warp divergence, indicated by `// WARP DIVERGENCE POINT` comments.\n"
+         "At each warp divergence point, add a comment identifying the TOTAL number of threads that will enter or not enter the warp divergence point due to the conditional branch encountered.\n"
+         "The comment should contain reasoning as to the total number of threads entering the warp divergence point.\n"
+         "Reasoning should be indicated by a comment on the line of the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING`, followed by comments explaining the reasoning for the number of threads that will enter the warp divergence point.\n"
+         "At the end of the reasoning, add a comment indicating the total number of threads that will enter the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: XXX`.\n"
+         "Where XXX is the total number of threads that will enter the warp divergence region.\n"
+         "Code comment annotations should appear as in the example below:\n"
+         "Example Before:\n{step7_example_before}\n\n"
+         "Example After:\n{step7_example_after}\n\n"
+         "In the above example, the added comments explain the reasoning taken to arrive at the number of threads that enter a warp divergence region.\n"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
@@ -466,6 +463,8 @@ def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
         "grid_size": state["grid_size"],
         "block_size": state["block_size"],
         "total_num_threads": state["total_num_threads"],
+        "step7_example_before": step7_example_before,
+        "step7_example_after": step7_example_after,
     }).content
 
     print("\n\n\n")
@@ -490,15 +489,15 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
-         "For each line of the source code, identify the number of operations performed and add a comment on the same line indicating the number of operations."
-         "Code comment annotations should appear on the same line and in the format as in the example below:"
-         "// INTOP: XXX -- SP-FLOP: YYY -- DP-FLOP: ZZZ"
-         "float example = a + b; // INTOP: 0 -- SP-FLOP: 1 -- DP-FLOP: 0"
-         "If a ternary operator is encountered, treat it as a conditional branch and annotate it with the number of operations performed in each branch."
-         "If a FMA operation is encountered, count it as 2 operations (1 for the multiply and 1 for the add)."
-         "If a loop is encountered, annotate the number of operations performed by the loop continuation logic for the threads entering the loop and the number of operations performed for the threads not entering the loop."
-         "Only consider arithmetic operations (ADD, SUB, MUL, DIV, FMA)."
-         "DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations."
+         "For each line of the source code, identify the number of operations performed and add a comment on the same line indicating the number of operations.\n"
+         "Code comment annotations should appear on the same line and in the format as in the example below:\n"
+         "// INTOP: XXX -- SP-FLOP: YYY -- DP-FLOP: ZZZ\n"
+         "float example = a + b; // INTOP: 0 -- SP-FLOP: 1 -- DP-FLOP: 0\n"
+         "If a ternary operator is encountered, treat it as a conditional branch and annotate it with the number of operations performed in each branch.\n"
+         "If a FMA operation is encountered, count it as 2 operations (1 for the multiply and 1 for the add).\n"
+         "If a loop is encountered, annotate the number of operations performed by the loop continuation logic for the threads entering the loop and the number of operations performed for the threads not entering the loop.\n"
+         "Only consider arithmetic operations (ADD, SUB, MUL, DIV, FMA).\n"
+         "DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations.\n"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
@@ -536,10 +535,10 @@ def make_kernel_num_ops_annotator_node(llm):
 def kernel_ops_summarizer(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code summarizer that summarizes the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet. "
-         "You will be given two annotated source code snippets: one with warp divergence points and the number of threads that will execute at each part of the kernel code, and another with the number of operations performed at each line of the kernel code."
-         "Use the annotated codes to sum up the total number of operations performed by the kernel, accounting for the number of threads that will enter each warp divergence point."
-         "Only return the summary in the format as in the example below:"
+         "You are a code summarizer that summarizes the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
+         "You will be given two annotated source code snippets: one with warp divergence points and the number of threads that will execute at each part of the kernel code, and another with the number of operations performed at each line of the kernel code.\n"
+         "Use the annotated codes to sum up the total number of operations performed by the kernel, accounting for the number of threads that will enter each warp divergence point.\n"
+         "Only return the summary in the format as in the example below:\n"
          "INTOP: XXX\nSP-FLOP: YYY\nDP-FLOP: ZZZ\n"
          ),
         ("human",
