@@ -24,8 +24,9 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
     // x > 0 && x < 2000-1 --> x in (1, 1998) --> 1998 valid x values
     // y > 0 && y < 1000-1 --> y in (1, 998) --> 998 valid y values
     // x and y must both be valid for the computation to proceed
-    // y is the limiting factor here, as it has fewer valid values
-    // WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: 998 
+    // Only threads with valid x and y will enter this region
+    // Total valid threads entering this region = 998 * 1998 = 1996004
+    // WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: 1996004
     // if (x > 0 && x < width-1 && y > 0 && y < height-1) {
     if (x > 0 && x < 2000-1 && y > 0 && y < 1000-1) {
         // int idx = y * width + x;

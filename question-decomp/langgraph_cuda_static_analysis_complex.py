@@ -125,11 +125,11 @@ def make_src_input_args_concretizer_node(llm):
 
 
 
-with open('./example_codes/single_kernel_before_example.cu', 'r') as file:
-    single_kernel_example_before = file.read()
+with open('./example_codes/step2_example_before.cu', 'r') as file:
+    step2_example_before = file.read()
 
-with open('./example_codes/single_kernel_after_example.cu', 'r') as file:
-    single_kernel_example_after = file.read()
+with open('./example_codes/step2_example_after.cu', 'r') as file:
+    step2_example_after = file.read()
 
 
 def src_single_kernel_execution_modifier(state: KernelAnalysisState, llm: ChatOpenAI): 
@@ -141,9 +141,9 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, llm: ChatOp
          "Only return the modified source code, nothing else.\nAn example is provided below:\n"
          "Example Before:\n"
          "Target Kernel Name: example_kernel\n"
-         "{single_kernel_example_before}\n\n"
+         "{step2_example_before}\n\n"
          "Example After:\n"
-         "{single_kernel_example_after}\n\n"),
+         "{step2_example_after}\n\n"),
         ("human", 
          "Target Kernel Name: {kernel_name}\n"
          #"Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
@@ -158,8 +158,8 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, llm: ChatOp
         #"grid_size": state["grid_size"],
         #"block_size": state["block_size"], 
         #"total_num_threads": state["total_num_threads"], 
-        "single_kernel_example_before": single_kernel_example_before,
-        "single_kernel_example_after": single_kernel_example_after,
+        "step2_example_before": step2_example_before,
+        "step2_example_after": step2_example_after,
     }).content
 
     print("\n\n\n")
@@ -309,11 +309,11 @@ def make_kernel_source_snippet_extractor_node(llm):
 
 
 
-with open('./example_codes/source_code_concretization_example_before.cu', 'r') as file:
-    source_code_concretization_example_before = file.read()
+with open('./example_codes/step5_example_before.cu', 'r') as file:
+    step5_example_before = file.read()
 
-with open('./example_codes/source_code_concretization_example_after.cu', 'r') as file:
-    source_code_concretization_example_after = file.read()
+with open('./example_codes/step5_example_after.cu', 'r') as file:
+    step5_example_after = file.read()
 
 def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
@@ -328,9 +328,9 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
          "If a variable can be concretized, but is based off an expression, only fill in the variables it uses, do not evaluate the expression to a single value. Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"
          "Here is an example of the desired types of variable and explicit value concretization source code transformations:\n"
          "Example Before:\n"
-         "{source_code_concretization_example_before}\n\n"
+         "{step5_example_before}\n\n"
          "Example After:\n"
-         "{source_code_concretization_example_after}\n\n"
+         "{step5_example_after}\n\n"
          ),
         ("human",
             "Target Kernel Name: {kernel_name}\n"
@@ -348,8 +348,8 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"], 
-        "source_code_concretization_example_before": source_code_concretization_example_before,
-        "source_code_concretization_example_after": source_code_concretization_example_after,
+        "step5_example_before": step5_example_before,
+        "step5_example_after": step5_example_after,
     }).content
 
     print("\n\n\n")
