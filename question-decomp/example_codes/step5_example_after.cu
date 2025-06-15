@@ -1,3 +1,4 @@
+```
 template<typename T = float>
 __global__ void example_kernel(const float* __restrict__ in, float* __restrict__ out, int width, int height) {
     //int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -35,3 +36,4 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
         }
     }
 }
+```

@@ -1,3 +1,4 @@
+```
 template<typename T = float>
 __global__ void example_kernel(const float* __restrict__ in, float* __restrict__ out, int width, int height) {
     // int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -37,7 +38,7 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
 
         // WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING
         // Condition is always true, so all threads in this region will execute this
-        // WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: 998 
+        // WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: 1996004
         // if (applyScaleFactor){
         if (1){
             //out[idx] *= 1/static_cast<T>(scale_factor);
@@ -45,3 +46,4 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
         }
     }
 }
+```

@@ -1,3 +1,4 @@
+```
 #include <cuda_runtime.h>
 #include <iostream>
 #include <type_traits>
@@ -12,14 +13,21 @@ __global__ void example_kernel(const T* __restrict__ in, T* __restrict__ out, in
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
+    // int scaleFactor = (x * y > 1000) ? 5 : 1;
+    // CONVERTED TERNARY TO IF STATEMENT
+    int scaleFactor = 1;
+    if (x * y > 1000){
+        scaleFactor = 5;
+    }
+
     // Only compute for internal points (avoid boundary)
     // if (x > 0 && x < width-1 && y > 0 && y < height-1) {
     if (x > 0 && x < 3000-1 && y > 0 && y < 1500-1) {
     // if (x > 0 && x < 2999 && y > 0 && y < 1499) { // Calculated values
         // int idx = y * width + x;
         int idx = y * 3000 + x;
-        // out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-width] + in[idx+width]) / static_cast<T>(5);
-        out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-3000] + in[idx+3000]) / static_cast<float>(5);
+        // out[idx] = static_cast<T>(scaleFactor) * (in[idx] + in[idx-1] + in[idx+1] + in[idx-width] + in[idx+width]) / static_cast<T>(5);
+        out[idx] = static_cast<float>(scaleFactor) * (in[idx] + in[idx-1] + in[idx+1] + in[idx-3000] + in[idx+3000]) / static_cast<float>(5);
     }
 }
 
@@ -141,3 +149,4 @@ int main(int argc, char* argv[]) {
     // To run for double, use: run_stencil2d<double>(num_iterations, width, height);
     return 0;
 }
+```

@@ -32,6 +32,7 @@ Example Block Size: (8, 10, 1)
 Example Total Number of Threads: 2500000 
 
 Example Source Code:
+```
 template<typename T = float>
 __global__ void example_kernel(const T* __restrict__ in, T* __restrict__ out, int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -51,3 +52,4 @@ __global__ void example_kernel(const T* __restrict__ in, T* __restrict__ out, in
         }
     }
 }
+```

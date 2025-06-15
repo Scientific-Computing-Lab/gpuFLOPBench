@@ -1,3 +1,4 @@
+```
 #include <cuda_runtime.h>
 #include <iostream>
 #include <type_traits>
@@ -100,3 +101,4 @@ int main(int argc, char* argv[]) {
     // To run for double, use: run_stencil2d<double>(num_iterations, width, height);
     return 0;
 }
+```

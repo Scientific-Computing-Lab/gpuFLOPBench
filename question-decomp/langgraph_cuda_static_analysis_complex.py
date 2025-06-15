@@ -81,15 +81,16 @@ def src_input_args_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
          "If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else."
          "Do not include any additional comments or explanations in the output.\n"
          "If the `auto` keyword is used, replace it with the corresponding concrete type.\n"
+         "If a ternary operator is encountered, convert it to a regular if statement and mark the conversion with the comment of `// CONVERTED TERNARY TO IF STATEMENT`.\n"
          "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
-         "```{example_before}```\n\n"
-         "```{example_after}```\n\n"),
+         "{step1_example_before}\n\n"
+         "{step1_example_after}\n\n"),
         ("human", 
          "Target Kernel Name: {kernel_name}\n"
          "Execution Arguments: {exec_args}\n"
          "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
          "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to calculate as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
-         "Source code:\n{source_code}\n\n"
+         "Source code:\n```{source_code}```\n\n"
          )
     ])
     chain = prompt | llm
@@ -100,8 +101,8 @@ def src_input_args_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"], 
-        "example_before": step1_example_before,
-        "example_after": step1_example_after,
+        "step1_example_before": step1_example_before,
+        "step1_example_after": step1_example_after,
     }).content
 
     print("\n\n\n")
@@ -227,7 +228,7 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
 """
          ),
         ("human",
-            "Target CUDA Kernel Name: {kernel_name}\n"
+            "Target CUDA Kernel Name: ```{kernel_name}```\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
             "Please return the snippet of the source code that contains the first kernel invocation with concrete values and associated input descriptions."
             "Source code:\n{updated_source}\n"
@@ -273,7 +274,7 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, llm: ChatOpenAI)
          "There may exist multuple CUDA kernels in the source code, but you should only return the one that matches the target kernel name and any kernels which the target kernel makes calls to.\n"
          ),
         ("human",
-            "Target CUDA Kernel Name: {kernel_name}\n"
+            "Target CUDA Kernel Name: ```{kernel_name}```\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
             "Please return the snippet of the source code that contains the kernel function definition."
             "Source code:\n{updated_source}\n"
@@ -333,7 +334,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
          "{step5_example_after}\n\n"
          ),
         ("human",
-            "Target Kernel Name: {kernel_name}\n"
+            "Target Kernel Name: ```{kernel_name}```\n"
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
             "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to replace as many variables (including blockDim and gridDim variables) as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
@@ -485,20 +486,30 @@ def make_kernel_num_threads_annotator_node(llm):
 
 
 
+
+#with open('./example_codes/step8_example_before.cu', 'r') as file:
+#    step8_example_before = file.read()
+#with open('./example_codes/step8_example_after.cu', 'r') as file:
+#    step8_example_after = file.read()
+with open('./example_codes/step8_examples.cu', 'r') as file:
+    step8_examples = file.read()
+
 def kernel_num_ops_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
-         "For each line of the source code, identify the number of operations performed and add a comment on the same line indicating the number of operations.\n"
-         "Code comment annotations should appear on the same line and in the format as in the example below:\n"
-         "// INTOP: XXX -- SP-FLOP: YYY -- DP-FLOP: ZZZ\n"
-         "float example = a + b; // INTOP: 0 -- SP-FLOP: 1 -- DP-FLOP: 0\n"
-         "If a ternary operator is encountered, treat it as a conditional branch and annotate it with the number of operations performed in each branch.\n"
-         "If a FMA operation is encountered, count it as 2 operations (1 for the multiply and 1 for the add).\n"
-         "If a loop is encountered, annotate the number of operations performed by the loop continuation logic for the threads entering the loop and the number of operations performed for the threads not entering the loop.\n"
+         #"You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
+         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
+         "For each line of the source code, identify the number of SP-FLOP and DP-FLOP operations performed. If a line is performing floating point operations, add a comment on the line above it indicating the number of operations performed. This comment should be followed by an explanation as to the number of FLOP operations for that line. \n"
+         "If a fused-multiply-add (FMA) operation is encountered, count it as 2 operations (1 for the multiply and 1 for the add).\n"
+         "If a loop with logic that performs floating point operations is encountered, annotate the number of operations performed by the loop continuation logic.\n"
+         "DO NOT comment or annotate lines that are not performing floating point operations.\n"
          "Only consider arithmetic operations (ADD, SUB, MUL, DIV, FMA).\n"
          "DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations.\n"
          "Only return the annotated kernel source code, nothing else.\n"
+         "Code annotations and comments should appear in the format of the example below:\n"
+         "Examples:\n{step8_examples}\n\n"
+         #"Example Before:\n{step8_example_before}\n\n"
+         #"Example After:\n{step8_example_after}\n\n"
          ),
         ("human",
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
@@ -513,6 +524,9 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"],
+        #"step8_example_before": step8_example_before,
+        #"step8_example_after": step8_example_after,
+        "step8_examples": step8_examples,
     }).content
 
     print("\n\n\n")
@@ -535,11 +549,12 @@ def make_kernel_num_ops_annotator_node(llm):
 def kernel_ops_summarizer(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code summarizer that summarizes the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
+         #"You are a code summarizer that summarizes the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
+         "You are a code summarizer that summarizes the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
          "You will be given two annotated source code snippets: one with warp divergence points and the number of threads that will execute at each part of the kernel code, and another with the number of operations performed at each line of the kernel code.\n"
          "Use the annotated codes to sum up the total number of operations performed by the kernel, accounting for the number of threads that will enter each warp divergence point.\n"
          "Only return the summary in the format as in the example below:\n"
-         "INTOP: XXX\nSP-FLOP: YYY\nDP-FLOP: ZZZ\n"
+         "SP-FLOP: YYY\nDP-FLOP: ZZZ\n"
          ),
         ("human",
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
