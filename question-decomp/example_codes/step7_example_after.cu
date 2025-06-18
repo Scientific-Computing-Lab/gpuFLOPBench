@@ -22,8 +22,8 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
     // int applyScaleFactor = 1; // Calculated value
 
     // WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING
-    // x > 0 && x < 2000-1 --> x in (1, 1998) --> 1998 valid x values
-    // y > 0 && y < 1000-1 --> y in (1, 998) --> 998 valid y values
+    // x > 0 && x < 2000-1 --> x in (1, 1998) (inclusive) --> 1998 valid x values
+    // y > 0 && y < 1000-1 --> y in (1, 998) (inclusive) --> 998 valid y values
     // x and y must both be valid for the computation to proceed
     // Only threads with valid x and y will enter this region
     // Total valid threads entering this region = 998 * 1998 = 1996004
@@ -33,8 +33,16 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
         // int idx = y * width + x;
         int idx = y * 2000 + x;
 
-        // out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-width] + in[idx+width]);
-        out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-2000] + in[idx+2000]);
+        // WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING
+        // x is in [1, 1998]
+        // y is in [1, 998]
+        
+        // WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: 1996004
+        // for (int i = x; i < y; i += blockDim.x){
+        for (int i = x; i < y; i += 8){
+            // out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-width] + in[idx+width]);
+            out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-2000] + in[idx+2000]);
+        }
 
         // WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING
         // Condition is always true, so all threads in this region will execute this

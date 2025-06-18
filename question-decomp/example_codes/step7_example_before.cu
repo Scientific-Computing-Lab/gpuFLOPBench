@@ -61,8 +61,12 @@ __global__ void example_kernel(const float* __restrict__ in, float* __restrict__
         //int idx = y * width + x;
         int idx = y * 2000 + x;
 
-        // out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-width] + in[idx+width]);
-        out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-2000] + in[idx+2000]);
+        // WARP DIVERGENCE POINT
+        // for (int i = x; i < y; i += blockDim.x){
+        for (int i = x; i < y; i += 8){
+            // out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-width] + in[idx+width]);
+            out[idx] = (in[idx] + in[idx-1] + in[idx+1] + in[idx-2000] + in[idx+2000]);
+        }
 
         // WARP DIVERGENCE POINT
         // if (applyScaleFactor){

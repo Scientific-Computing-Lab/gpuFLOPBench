@@ -30,7 +30,8 @@ llm = ChatOpenAI(
   temperature=0.2,
   top_p=0.1,
   #model_name="openai/o4-mini>",
-  model_name="openai/gpt-4.1-mini"
+  #model_name="openai/gpt-4.1-mini"
+  model_name="google/gemini-2.0-flash-001"
   #model_name="openai/gpt-4o-mini", # cheap model for testing
   #model_kwargs={
   #  'top_p' : 0.1,
@@ -400,7 +401,7 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, llm: ChatOpenAI
         ("human",
             "Please return the annotated kernel source code with warp divergence indicators.\n"
             "Ensure to mark ALL if statements, while loops, for loops, and ternary operators with the `// WARP DIVERGENCE POINT` comment.\n"
-            "Source code:\n{snippet_kernel_src_concretized_values}\n"
+            "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
             )
     ])
     chain = prompt | llm
@@ -444,6 +445,9 @@ def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
          "Reasoning should be indicated by a comment on the line of the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING`, followed by comments explaining the reasoning for the number of threads that will enter the warp divergence point.\n"
          "At the end of the reasoning, add a comment indicating the total number of threads that will enter the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: XXX`.\n"
          "Where XXX is the total number of threads that will enter the warp divergence region.\n"
+         #"If a loop is encountered, annotate the number of threads entering the region, but also annotate the number of iterations that will be executed by the loop, indicated by `// WARP DIVERGENCE POINT -- TOTAL LOOP ITERATIONS: YYY`.\n"
+         #"Where YYY is the total number of iterations that will be executed by the loop.\n"
+         #"The number of loop iterations should be calculated for an individual thread. Accompanied by an explanation of how the number of iterations was calculated. Sometimes individual threads will perform different numbers of iterations, explain a formula that calculates this based on the threadIdx and blockIdx.\n"
          "Code comment annotations should appear as in the example below:\n"
          "Example Before:\n{step7_example_before}\n\n"
          "Example After:\n{step7_example_after}\n\n"
@@ -454,7 +458,7 @@ def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
             "Please return the annotated kernel source code with thread count indicators."
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-            "Source code:\n{kernel_annotated_warp_divergence}\n"
+            "Kernel source code:\n{kernel_annotated_warp_divergence}\n"
             )
     ])
     chain = prompt | llm
@@ -514,7 +518,7 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
         ("human",
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-            "Source code:\n{snippet_kernel_src_concretized_values}\n"
+            "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
             )
     ])
     chain = prompt | llm
@@ -551,16 +555,17 @@ def kernel_ops_summarizer(state: KernelAnalysisState, llm: ChatOpenAI):
         ("system", 
          #"You are a code summarizer that summarizes the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
          "You are a code summarizer that summarizes the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
-         "You will be given two annotated source code snippets: one with warp divergence points and the number of threads that will execute at each part of the kernel code, and another with the number of operations performed at each line of the kernel code.\n"
+         "You will be given two annotated source code snippets: one with warp divergence points annotated with the number of threads that will execute at each part of the kernel code, and another with the number of operations performed at each line of the kernel code.\n"
          "Use the annotated codes to sum up the total number of operations performed by the kernel, accounting for the number of threads that will enter each warp divergence point.\n"
-         "Only return the summary in the format as in the example below:\n"
+         "The output should briefly explain how it arrived at the total number of SP-FLOP and DP-FLOP operations performed by the kernel.\n"
+         "At the end of the summary, return the final summed counts as in the example below:\n"
          "SP-FLOP: YYY\nDP-FLOP: ZZZ\n"
          ),
         ("human",
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-            "Source Code with INTOP, SP-FLOP, and DP-FLOP annotations:\n{kernel_annotated_num_ops}\n"
-            "Source Code with warp divergence and thread count annotations:\n{kernel_annotated_num_threads}\n\n"
+            "Kernel source code with SP-FLOP, and DP-FLOP annotations:\n{kernel_annotated_num_ops}\n"
+            "Kernel source code with warp divergence and thread count annotations:\n{kernel_annotated_num_threads}\n\n"
             )
     ])
     chain = prompt | llm
