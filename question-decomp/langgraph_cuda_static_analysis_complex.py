@@ -4,12 +4,14 @@ from typing_extensions import TypedDict
 
 from os import getenv
 import os
+from pydantic import BaseModel, Field
 
 import langgraph
 from langgraph.graph import StateGraph, END
 from langchain_openai.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from typing import Dict, Any
+from typing import List, Tuple
 
 import operator
 from typing import Annotated
@@ -29,14 +31,20 @@ llm = ChatOpenAI(
   openai_api_base="https://openrouter.ai/api/v1",
   temperature=0.2,
   top_p=0.1,
-  #model_name="openai/o4-mini>",
+  model_name="openai/o4-mini>",
   #model_name="openai/gpt-4.1-mini"
-  model_name="google/gemini-2.0-flash-001"
+  #model_name="google/gemini-2.0-flash-001"
   #model_name="openai/gpt-4o-mini", # cheap model for testing
   #model_kwargs={
   #  'top_p' : 0.1,
   #},
 )
+
+# Class used to represent a warp divergence point in the kernel source code
+# Part of step 7a, where we extract the warp divergence points from the annotated kernel source code
+class WarpDivergencePoint(BaseModel):
+    classification: str = Field(..., "Derived classification of the warp divergence point, which can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary'. This classification is used to classify the type of warp divergence point.")
+    source_code: str = Field(..., "Extracted source code of the warp divergence point, including the conditional logic and necessary variables used in the warp divergence point entry logic. The source code should include the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment.")
 
 
 # Updated KernelAnalysisState using TypedDict with default values for optional fields
@@ -55,7 +63,10 @@ class KernelAnalysisState(TypedDict, total=False):
     snippet_kernel_src: str
     snippet_kernel_src_concretized_values: str
     kernel_annotated_warp_divergence: str
-    kernel_annotated_num_threads: str
+    kernel_annotated_WDPs: str
+    wdps_list: List[WarpDivergencePoint]  # List of tuples with warp divergence point source code and classification
+    wdps_num_executions : List[int]
+
     kernel_annotated_num_ops: str
     summed_kernel_ops: str
 
@@ -380,6 +391,8 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, llm: ChatOpenAI
          "If a conditional branch is always true or always false, it is still considered a warp divergence point.\n"
          "min and max operations are not considered warp divergence points, as they do not cause threads to diverge within a warp.\n"
          "Annotate the code with comments indicating where warp divergence will occur.\n"
+         "The comment should appear only on conditional statements, and only on the line above the warp divergence point, in the format of `// WARP DIVERGENCE POINT`.\n"
+         "Do not annotate lines that are commented out.\n"
          "Code comment annotations should appear on the line before as in the examples below:\n"
          "If statement example:\n"
          "// WARP DIVERGENCE POINT\n"
@@ -438,31 +451,26 @@ with open('./example_codes/step7_example_after.cu', 'r') as file:
 def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of threads that will execute at each part of the kernel code.\n"
+         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with dependent variable range/value information for marked warp divergence regions.\n"
          "The source code contains annotations for warp divergence, indicated by `// WARP DIVERGENCE POINT` comments.\n"
-         "At each warp divergence point, add a comment identifying the TOTAL number of threads that will enter or not enter the warp divergence point due to the conditional branch encountered.\n"
-         "The comment should contain reasoning as to the total number of threads entering the warp divergence point.\n"
-         "Reasoning should be indicated by a comment on the line of the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- TOTAL THREADS ENTERING REASONING`, followed by comments explaining the reasoning for the number of threads that will enter the warp divergence point.\n"
-         "At the end of the reasoning, add a comment indicating the total number of threads that will enter the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- TOTAL NUM THREADS ENTERING REGION: XXX`.\n"
-         "Where XXX is the total number of threads that will enter the warp divergence region.\n"
-         #"If a loop is encountered, annotate the number of threads entering the region, but also annotate the number of iterations that will be executed by the loop, indicated by `// WARP DIVERGENCE POINT -- TOTAL LOOP ITERATIONS: YYY`.\n"
-         #"Where YYY is the total number of iterations that will be executed by the loop.\n"
-         #"The number of loop iterations should be calculated for an individual thread. Accompanied by an explanation of how the number of iterations was calculated. Sometimes individual threads will perform different numbers of iterations, explain a formula that calculates this based on the threadIdx and blockIdx.\n"
+         "At each warp divergence point, add a comment indicating the dependent variables used as part of the conditional branch of the warp divergence point.\n"
+         "The comment should contain reasoning as to the values or range of values of the dependent variables used in the conditional statement of the warp divergence.\n"
+         "Reasoning should be indicated by a comment on the line of the warp divergence point, indicated by `// WARP DIVERGENCE POINT -- VARIABLES REASONING`, followed by comments explaining explaining the values of variables the warp divergence region is dependent on.\n"
          "Code comment annotations should appear as in the example below:\n"
          "Example Before:\n{step7_example_before}\n\n"
          "Example After:\n{step7_example_after}\n\n"
-         "In the above example, the added comments explain the reasoning taken to arrive at the number of threads that enter a warp divergence region.\n"
+         "In the above example, the added comments explain the reasoning taken to arrive at the value (or value ranges) of variables needed by the logic to enter the warp divergence region.\n"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
-            "Please return the annotated kernel source code with thread count indicators."
+            "Please return the annotated kernel source code."
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
             "Kernel source code:\n{kernel_annotated_warp_divergence}\n"
             )
     ])
     chain = prompt | llm
-    kernel_annotated_num_threads = chain.invoke({
+    kernel_annotated_WDPs = chain.invoke({
         "kernel_annotated_warp_divergence": state["kernel_annotated_warp_divergence"],
         "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
         "grid_size": state["grid_size"],
@@ -473,18 +481,189 @@ def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     }).content
 
     print("\n\n\n")
-    print("---------- BEGIN STEP 7: Kernel Number of Threads Annotation ----------")
-    print(f"\n{kernel_annotated_num_threads}\n")
-    print("---------- END STEP 7: Kernel Number of Threads Annotation ----------")
+    print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
+    print(f"\n{kernel_annotated_WDPs}\n")
+    print("---------- END STEP 7: Kernel WDP Annotation ----------")
     print("\n\n\n")
 
-    return {"kernel_annotated_num_threads": kernel_annotated_num_threads}
+    return {"kernel_annotated_WDPs": kernel_annotated_WDPs}
 
 # Node wrappers for LangGraph
 def make_kernel_num_threads_annotator_node(llm):
     def node(state):
         return kernel_num_threads_annotator(state, llm)
     return node
+
+
+
+
+
+
+# Because this step 7 needs to be more fleshed-out, we create a schema for it to use in
+# extracting the WARP DIVERGENCE POINTS and their dependent variables.
+
+
+class DivergencePointsList(BaseModel):
+    # technically we only allow if, else-if, for, and while
+    # step 1 forces all the ternary to be converted to if statements
+    # and all the do-while loops to while loops,
+    # but some may escape through weak models that don't properly transform the code
+    # TODO: we need to account for switch case statements....
+
+    """A list of the warp divergence point objects from the kernel source code, with their conditional definition, logic, dependent variables, variables reasoning, and classification. Each warp divergence point is represented as a WarpDivergencePoint object, with a `source_code` string of the warp divergence point, and a `classification` of the warp divergence point from the list: {for, if, else-if, while, do-while, ternary}."""
+
+    warp_divergence_points: List[WarpDivergencePoint] = Field(
+        ...,
+        description="A list of WarpDivergencePoint objects containing the information about warp divergence points in the kernel source code, where each object contains the source code (source_code) of the warp divergence point and its classification (classification). The classification can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary', and is used to classify the type of warp divergence point. The start of the source code of the warp divergence point should is indicated by the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment. The source shuold include lines up to (and including) the conditional/loop-logic definitions. DO NOT include the code block that the warp divergence points enclose, only the initial definition and necessary variables used in the warp divergence point entry logic.",
+    )
+
+def wdp_extractor(state: KernelAnalysisState, llm: ChatOpenAI):
+    """Extracts the warp divergence points as a list from the annotated kernel source code."""
+    wdp_extractor_llm = llm.with_structured_output(DivergencePointsList)
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are a code extractor that extracts a list of warp divergence region substrings from the provided source code.\n"
+         "Your job is to extract the warp divergence points from the provided source code, and return them as a list of tuples, where each tuple contains the classification of the warp divergence point and the source code of the warp divergence point.\n"
+         "Below is an example of some input code:\n\n"
+         "{step7_example_after}\n\n"
+         "Below is an example of the captured tuples:\n"
+
+         "WarpDivergencePoint #1:"
+         "classificaiton = for\n"
+        """source_code = ```// For-loop is iterating from x to y with a step of 8
+// x is in [1, 1998]
+// y is in [1, 998]
+// for-loop entry condition: x+8*n < y, where n is an integer >= 0
+for (int i = x; i < y; i += 8)```\n\n"""
+
+         "WarpDivergencePoint #2:"
+         "classification = if\n"
+         """source_code = ```// IF statement is checking if x and y are within valid bounds
+// x is in [0, 1999]
+// y is in [0, 12409]
+// entry condition: x > 0 && x < 2000-1 --> x must be in [1, 1998] --> 1998 valid x values
+// entry condition: y > 0 && y < 1000-1 --> y must be in [1, 998] --> 998 valid y values
+// BOTH entry conditions must be met to enter this region 
+if (x > 0 && x < 2000-1 && y > 0 && y < 1000-1)```\n\n"""
+
+         "WarpDivergencePoint #3:"
+        "classification = ternary\n"
+        """source_code = ```// Condition is checking if scale_factor is greater than 1000
+// this condition is always true, this region will always be executed
+int applyScaleFactor = (1250.0 > 1000) ? 1 : 0;```\n\n"""
+
+         "WarpDivergencePoint #4:"
+        "classification = if\n"
+        """source_code = ```// Condition is always true, this region will always be executed
+if (1)```\n\n"""
+        "The warp divergence regions to extract are annotated with a `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment for identification. DO NOT include the code block that the warp divergence points enclose, only the initial definition and necessary variables used in the warp divergence point entry logic.\n"
+         ),
+        ("human",
+            "Please return a list of the warp divergence point (classification, source_code) tuples from the following source code."
+            "Kernel source code:\n{kernel_annotated_WDPs}\n"
+            )
+    ])
+    chain = prompt | wdp_extractor_llm 
+    wdps = chain.invoke({
+        "kernel_annotated_WDPs": state["kernel_annotated_WDPs"],
+        "step7_example_after": step7_example_after,
+    }).warp_divergence_points
+
+    print("\n\n\n")
+    print("---------- BEGIN STEP 7a: WDP Extraction ----------")
+    print(f"\n{wdps}\n")
+    print("---------- END STEP 7a: WDP Extraction ----------")
+    print("\n\n\n")
+
+    return {"wdps_list": wdps}
+
+def make_wdp_extractor_node(llm):
+    """Node wrapper for the WDP extractor."""
+    def node(state):
+        return wdp_extractor(state, llm)
+    return node
+
+
+
+
+
+
+
+# We create a custom structured output so that models return the number of iterations executed for each warp divergence point
+class NumExecutions(BaseModel):
+    num_executions: int = Field(..., "Calculated number of times the source code will be executed based on the mathematical summation logic provided in the prompt. This is a single integer value representing the total number of times the given code snippet will be executed for the provided conditional values. -1 indicates that we are unable to calculate an exact integer number of executions.")
+
+# Once we have the WDPs in a list, we can query each one using o3-mini to calculate the number of times the WDP will be executed 
+def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI):
+    """ Calculates the number of times each warp divergence point (WDP) will be executed based on mathematical summation logic."""
+
+    calculator_llm = llm.with_structured_output(NumExecutions)
+
+    wdps = state["wdps_list"]
+
+    print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------")
+
+    calculated_executions = []
+
+    for idx, wdp in enumerate(wdps):
+
+        condition_type = {'if': 'if', 'else-if': 'if', 'for': 'for', 'while': 'for', 'do-while': 'for', 'ternary': 'if'}.get(wdp.classification, None)
+
+        if condition_type is None:
+            raise ValueError(f"Unsupported WDP classification: {wdp.classification}. Supported classifications are: 'if', 'else-if', 'for', 'while', 'do-while', 'ternary'.")
+
+        if condition_type == 'if':
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", 
+                 "You are an execution analysis expert that calculates the number of times a conditional statement will be entered, given the its conditional logic and the range of values that the variables use in the conditional logic statement could take.\n"
+                 "The conditional statement and it's logic is provided as a source code snippet, with the range of values of its dependent variables provided as a comment on the lines above the loop statement.\n"
+                )
+                ("human",
+                 "For the following loop in C++:\n"
+                 "{source_code_snippet}\n\n"
+                 "Explain the following:\n"
+                 "1) Create a mathematical formula that calculates the number of iterations the loop will perform for any given input variables within the supplied ranges.\n"
+                 "2) Create a mathematical formula that sums the total number of iterations performed for all valid input variables within the supplied ranges.\n"
+                 "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
+                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of -999 if the loop will always execute. Use a value of 0 if the loop will never execute.\n"
+                 )
+            ])
+            pass
+        elif condition_type == 'for':
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", 
+                 "You are an execution analysis expert that calculates the number of times a conditional loop will be executed, given the loop's conditional logic statement and the range of all possible values that the variables use in the conditional logic statement.\n"
+                 "The loop and it's logic is provided as a source code snippet, and the range of values of its variables is provided as a comment on the lines above the conditional logic statement.\n"
+                )
+                ("human",
+                 "For the following conditional statement in C++:\n"
+                 "{source_code_snippet}\n\n"
+                 "Explain the following:\n"
+                 "1) Create a mathematical formula that calculates the number of times the statement will be executed for any given input variables within the supplied ranges.\n"
+                 "2) Create a mathematical formula that sums the total number of executions performed for all valid input variables within the supplied ranges.\n"
+                 "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
+                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of -999 if the conditional will always execute. Use a value of 0 if the conditional will never execute.\n"
+                 )
+            ])
+
+        chain = prompt | calculator_llm 
+        num_executions = chain.invoke({
+            "source_code_snippet": wdp.source_code,
+        }).num_executions
+
+        print("\n")
+        print(f"\t\t [{idx+1}] ({condition_type}) Number of Executions Calculation {num_executions}") 
+        print("\n")
+
+        calculated_executions.append(num_executions)
+
+    print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
+
+    return {"wdps_num_executions": calculated_executions}
+
+
+
 
 
 
