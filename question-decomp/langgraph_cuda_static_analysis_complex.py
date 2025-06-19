@@ -31,7 +31,7 @@ llm = ChatOpenAI(
   openai_api_base="https://openrouter.ai/api/v1",
   temperature=0.2,
   top_p=0.1,
-  model_name="openai/o4-mini>",
+  model_name="openai/o3-mini",
   #model_name="openai/gpt-4.1-mini"
   #model_name="google/gemini-2.0-flash-001"
   #model_name="openai/gpt-4o-mini", # cheap model for testing
@@ -43,8 +43,8 @@ llm = ChatOpenAI(
 # Class used to represent a warp divergence point in the kernel source code
 # Part of step 7a, where we extract the warp divergence points from the annotated kernel source code
 class WarpDivergencePoint(BaseModel):
-    classification: str = Field(..., "Derived classification of the warp divergence point, which can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary'. This classification is used to classify the type of warp divergence point.")
-    source_code: str = Field(..., "Extracted source code of the warp divergence point, including the conditional logic and necessary variables used in the warp divergence point entry logic. The source code should include the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment.")
+    classification: str = Field(..., description="Derived classification of the warp divergence point, which can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary'. This classification is used to classify the type of warp divergence point.")
+    source_code: str = Field(..., description="Extracted source code of the warp divergence point, including the conditional logic and necessary variables used in the warp divergence point entry logic. The source code should include the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment.")
 
 
 # Updated KernelAnalysisState using TypedDict with default values for optional fields
@@ -593,7 +593,7 @@ def make_wdp_extractor_node(llm):
 
 # We create a custom structured output so that models return the number of iterations executed for each warp divergence point
 class NumExecutions(BaseModel):
-    num_executions: int = Field(..., "Calculated number of times the source code will be executed based on the mathematical summation logic provided in the prompt. This is a single integer value representing the total number of times the given code snippet will be executed for the provided conditional values. -1 indicates that we are unable to calculate an exact integer number of executions.")
+    num_executions: int = Field(..., description="Calculated number of times the source code will be executed based on the mathematical summation logic provided in the prompt. This is a single integer value representing the total number of times the given code snippet will be executed for the provided conditional values. -1 indicates that we are unable to calculate an exact integer number of executions.")
 
 # Once we have the WDPs in a list, we can query each one using o3-mini to calculate the number of times the WDP will be executed 
 def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI):
@@ -619,7 +619,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI)
                 ("system", 
                  "You are an execution analysis expert that calculates the number of times a conditional statement will be entered, given the its conditional logic and the range of values that the variables use in the conditional logic statement could take.\n"
                  "The conditional statement and it's logic is provided as a source code snippet, with the range of values of its dependent variables provided as a comment on the lines above the loop statement.\n"
-                )
+                ),
                 ("human",
                  "For the following loop in C++:\n"
                  "{source_code_snippet}\n\n"
@@ -636,7 +636,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI)
                 ("system", 
                  "You are an execution analysis expert that calculates the number of times a conditional loop will be executed, given the loop's conditional logic statement and the range of all possible values that the variables use in the conditional logic statement.\n"
                  "The loop and it's logic is provided as a source code snippet, and the range of values of its variables is provided as a comment on the lines above the conditional logic statement.\n"
-                )
+                ),
                 ("human",
                  "For the following conditional statement in C++:\n"
                  "{source_code_snippet}\n\n"
@@ -807,7 +807,8 @@ def build_cuda_kernel_ops_graph(llm, show_mermaid_png: bool = False):
 
     workflow.add_edge("kernel_source_snippet_concretizer_5", "kernel_warp_divergence_annotator_6")
 
-    workflow.add_edge(["kernel_warp_divergence_annotator_6","first_kernel_invocation_snippet_extractor_3"],  "kernel_num_threads_annotator_7")
+    #workflow.add_edge(["kernel_warp_divergence_annotator_6","first_kernel_invocation_snippet_extractor_3"],  "kernel_num_threads_annotator_7")
+    workflow.add_edge(["kernel_warp_divergence_annotator_6","kernel_source_snippet_concretizer_5"],  "kernel_wdp_variables_annotator_7")
 
     workflow.add_edge(["first_kernel_invocation_snippet_extractor_3","kernel_source_snippet_concretizer_5"], "kernel_num_ops_annotator_8")
 
