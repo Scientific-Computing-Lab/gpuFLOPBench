@@ -393,22 +393,23 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, llm: ChatOpenAI
          "Annotate the code with comments indicating where warp divergence will occur.\n"
          "The comment should appear only on conditional statements, and only on the line above the warp divergence point, in the format of `// WARP DIVERGENCE POINT`.\n"
          "Do not annotate lines that are commented out.\n"
-         "Code comment annotations should appear on the line before as in the examples below:\n"
+         "If an existing comment appears above a warp divergence point, add the `//WARP DIVERGENCE POINT` annotation AFTER the existing comment.\n"
+         "Code comment annotations should appear on the line immediately before the warp divergence point as in the examples below:\n"
          "If statement example:\n"
-         "// WARP DIVERGENCE POINT\n"
-         "if (condition) {{...}}\n\n"
+         "```// WARP DIVERGENCE POINT\n"
+         "if (condition) {{...}}```\n\n"
 
          "While loop example:\n"
-         "// WARP DIVERGENCE POINT\n"
-         "while (condition) {{...}}\n\n"
+         "```// WARP DIVERGENCE POINT\n"
+         "while (condition) {{...}}```\n\n"
 
          "For loop example:\n"
-         "// WARP DIVERGENCE POINT\n"
-         "for (;;) {{...}}\n\n"
+         "```// WARP DIVERGENCE POINT\n"
+         "for (;;) {{...}}```\n\n"
 
          "Ternary example:\n"
-         "// WARP DIVERGENCE POINT\n"
-         "a = b ? c : d;\n"
+         "```// WARP DIVERGENCE POINT\n"
+         "a = b ? c : d;```\n\n"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
@@ -448,7 +449,7 @@ with open('./example_codes/step7_example_before.cu', 'r') as file:
 with open('./example_codes/step7_example_after.cu', 'r') as file:
     step7_example_after = file.read()
 
-def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
+def kernel_wdp_variables_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with dependent variable range/value information for marked warp divergence regions.\n"
@@ -489,9 +490,9 @@ def kernel_num_threads_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
     return {"kernel_annotated_WDPs": kernel_annotated_WDPs}
 
 # Node wrappers for LangGraph
-def make_kernel_num_threads_annotator_node(llm):
+def make_kernel_wdp_variables_annotator(llm):
     def node(state):
-        return kernel_num_threads_annotator(state, llm)
+        return kernel_wdp_variables_annotator(state, llm)
     return node
 
 
@@ -663,6 +664,11 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI)
     return {"wdps_num_executions": calculated_executions}
 
 
+def make_wdp_num_executions_calculations_node(llm):
+    """Node wrapper for the WDP number of executions calculator."""
+    def node(state):
+        return wdp_num_executions_calculations(state, llm)
+    return node
 
 
 
@@ -783,7 +789,9 @@ def build_cuda_kernel_ops_graph(llm, show_mermaid_png: bool = False):
     workflow.add_node("kernel_source_snippet_extractor_4", make_kernel_source_snippet_extractor_node(llm))
     workflow.add_node("kernel_source_snippet_concretizer_5", make_kernel_source_snippet_concretizer_node(llm))
     workflow.add_node("kernel_warp_divergence_annotator_6", make_kernel_warp_divergence_annotator_node(llm))
-    workflow.add_node("kernel_num_threads_annotator_7", make_kernel_num_threads_annotator_node(llm))
+    workflow.add_node("kernel_wdp_variables_annotator_7", make_kernel_wdp_variables_annotator(llm))
+    workflow.add_node("wdp_list_extractor_7a", make_wdp_extractor_node(llm))
+    workflow.add_node("wdp_num_execution_calculations_7b", make_wdp_num_executions_calculations_node(llm))
     workflow.add_node("kernel_num_ops_annotator_8", make_kernel_num_ops_annotator_node(llm))
     workflow.add_node("kernel_ops_summarizer_9", make_kernel_ops_summarizer_node(llm))
 
@@ -803,7 +811,11 @@ def build_cuda_kernel_ops_graph(llm, show_mermaid_png: bool = False):
 
     workflow.add_edge(["first_kernel_invocation_snippet_extractor_3","kernel_source_snippet_concretizer_5"], "kernel_num_ops_annotator_8")
 
-    workflow.add_edge(["kernel_num_threads_annotator_7", "kernel_num_ops_annotator_8", "first_kernel_invocation_snippet_extractor_3"], "kernel_ops_summarizer_9")
+    workflow.add_edge("kernel_wdp_variables_annotator_7", "wdp_list_extractor_7a")
+    workflow.add_edge("wdp_list_extractor_7a", "wdp_num_execution_calculations_7b")
+
+    #workflow.add_edge(["kernel_num_threads_annotator_7", "kernel_num_ops_annotator_8", "first_kernel_invocation_snippet_extractor_3"], "kernel_ops_summarizer_9")
+    workflow.add_edge(["wdp_num_execution_calculations_7b", "kernel_num_ops_annotator_8", "first_kernel_invocation_snippet_extractor_3"], "kernel_ops_summarizer_9")
 
     workflow.add_edge("kernel_ops_summarizer_9", END)
 
