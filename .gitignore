@@ -42,3 +42,9 @@ analysis/offload
 *.zip
 .DS_Store
 *.sqlite*
+*.pckl*
+*.*api-key
+*/.DS_Store
+*/__pycache__
+*/.langgraph_api
+*.env
