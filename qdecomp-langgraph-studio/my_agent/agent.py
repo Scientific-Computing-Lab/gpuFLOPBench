@@ -15,6 +15,7 @@ config = {"configurable": {"thread_id": "1"}}
 
 workflow = StateGraph(KernelAnalysisState, config_schema=Configuration)
 
+workflow.add_node("get_input_problem_0", get_input_problem)
 workflow.add_node("src_input_args_concretizer_1", src_input_args_concretizer)
 workflow.add_node("src_single_kernel_execution_modifier_2", src_single_kernel_execution_modifier)
 workflow.add_node("first_kernel_invocation_snippet_extractor_3", first_kernel_invocation_snippet_extractor)
@@ -29,6 +30,8 @@ workflow.add_node("kernel_ops_summarizer_9", kernel_ops_summarizer)
 
 
 # Graph edges
+workflow.add_edge("get_input_problem_0", "src_input_args_concretizer_1")
+
 workflow.add_edge("src_input_args_concretizer_1", "src_single_kernel_execution_modifier_2")
 
 workflow.add_edge("src_single_kernel_execution_modifier_2", "first_kernel_invocation_snippet_extractor_3")
@@ -65,6 +68,6 @@ workflow.add_edge([
 workflow.add_edge("kernel_ops_summarizer_9", END)
 
 # Set entrypoint
-workflow.set_entry_point("src_input_args_concretizer_1")
+workflow.set_entry_point("get_input_problem_0")
 
 graph = workflow.compile()

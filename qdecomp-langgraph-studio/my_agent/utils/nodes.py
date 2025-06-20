@@ -6,14 +6,22 @@ from pydantic import BaseModel, Field
 from langchain.prompts import ChatPromptTemplate
 from langchain_openai.chat_models import ChatOpenAI
 
+from .dataset import df
+
 def setup_llm(config):
-    llm_name = config.get("model", "openai/o3-mini")
-    temp = config.get("temp", 0.2)
-    top_p = config.get("top_p", 0.1)
-    provider_url = config.get("provider_url", "https://openrouter.ai/api/v1")
-    provider_api_key = config.get("provider_api_key", "")
+    llm_name = config.get("configurable", {}).get("model", "openai/o3-mini")
+    temp = config.get("configurable", {}).get("temp", 0.2)
+    top_p = config.get("configurable", {}).get("top_p", 0.1)
+    provider_url = config.get("configurable", {}).get("provider_url", "https://openrouter.ai/api/v1")
+    provider_api_key = config.get("configurable", {}).get("provider_api_key", "").strip()
 
     assert provider_api_key, "Provider API key is required. Please set the 'provider_api_key' in the configuration."
+
+    print(f"LLM Name:{llm_name}")
+    print(f"Prodiver API Key:{provider_api_key}")
+    print(f"Prodiver URL:{provider_url}")
+    print(f"Top-p:{top_p}")
+    print(f"temp:{temp}")
 
     # setup our LLM
     llm = ChatOpenAI(
@@ -25,6 +33,36 @@ def setup_llm(config):
     )
 
     return llm
+
+
+# Calculate the total number of threads from the gridSz and the blockSz
+# grid size is a string of format "(x, y, z)"
+# block size is a string of format "(x, y, z)"
+def calc_total_threads(gridSz:str, blockSz:str):
+    gridSz = eval(gridSz)
+    blockSz = eval(blockSz)
+    total_threads = gridSz[0] * gridSz[1] * gridSz[2] * blockSz[0] * blockSz[1] * blockSz[2]
+    return str(total_threads)
+
+
+
+def get_input_problem(state: KernelAnalysisState, config):
+
+    target_name = config.get("configurable", {}).get("input_problem", "resize-cuda")
+
+    row = df[df['targetName'] == target_name].iloc[0]
+
+    assert row is not None, f"Target problem '{target_name}' not found in the dataset."
+
+    return {'source_code' : row['kernelCode'],
+            'kernel_name' : row['Kernel Name'],
+            'exec_args' : row['exeArgs'],
+            'grid_size' : row['Grid Size'],
+            'block_size' : row['Block Size'],
+            'total_num_threads' : calc_total_threads(row['Grid Size'], row['Block Size'])
+            }
+
+
 
 
 
