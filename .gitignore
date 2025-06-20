@@ -41,3 +41,4 @@ few-shot-examples/*
 analysis/offload
 *.zip
 .DS_Store
+*.sqlite*

@@ -19,6 +19,14 @@ from typing import Annotated
 from IPython.display import Image, display
 from langchain_core.runnables.graph import MermaidDrawMethod
 
+# we use the SQLiteSaver to save the state of the graph
+# so that we can resume the graph execution without needing
+# to re-run the starting nodes of the graph
+# this is useful for long-running graphs that may take a while to complete
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph import StateGraph
+
 
 # please create a file called .openrouter-api-key in the current directory
 with open('./.openrouter-api-key', 'r') as file:
@@ -34,18 +42,23 @@ llm = ChatOpenAI(
   model_name="openai/o3-mini",
   #model_name="openai/gpt-4.1-mini"
   #model_name="google/gemini-2.0-flash-001"
+  #model_name="meta-llama/llama-3.2-3b-instruct" #cheap model for testing
+  #model_name="openai/gpt-4.1-nano",
   #model_name="openai/gpt-4o-mini", # cheap model for testing
   #model_kwargs={
   #  'top_p' : 0.1,
   #},
 )
 
+config = {"configurable": {"thread_id": "1"}}
+conn = sqlite3.connect("checkpoints.sqlite", check_same_thread=False)
+saver = SqliteSaver(conn)
+
 # Class used to represent a warp divergence point in the kernel source code
 # Part of step 7a, where we extract the warp divergence points from the annotated kernel source code
 class WarpDivergencePoint(BaseModel):
     classification: str = Field(..., description="Derived classification of the warp divergence point, which can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary'. This classification is used to classify the type of warp divergence point.")
     source_code: str = Field(..., description="Extracted source code of the warp divergence point, including the conditional logic and necessary variables used in the warp divergence point entry logic. The source code should include the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment.")
-
 
 # Updated KernelAnalysisState using TypedDict with default values for optional fields
 class KernelAnalysisState(TypedDict, total=False):
@@ -69,9 +82,6 @@ class KernelAnalysisState(TypedDict, total=False):
 
     kernel_annotated_num_ops: str
     summed_kernel_ops: str
-
-
-
 
 
 
@@ -129,6 +139,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, llm: ChatOpenAI):
 # Node wrappers for LangGraph
 def make_src_input_args_concretizer_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return src_input_args_concretizer(state, llm)
     return node
 
@@ -186,6 +197,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, llm: ChatOp
 # Node wrappers for LangGraph
 def make_src_single_kernel_execution_modifier_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return src_single_kernel_execution_modifier(state, llm)
     return node
 
@@ -266,6 +278,7 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
 # Node wrappers for LangGraph
 def make_first_kernel_invocation_snippet_extractor_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return first_kernel_invocation_snippet_extractor(state, llm)
     return node
 
@@ -312,6 +325,7 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, llm: ChatOpenAI)
 # Node wrappers for LangGraph
 def make_kernel_source_snippet_extractor_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return kernel_source_snippet_extractor(state, llm)
     return node
 
@@ -376,6 +390,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, llm: ChatOpenA
 # Node wrappers for LangGraph
 def make_kernel_source_snippet_concretizer_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return kernel_source_snippet_concretizer(state, llm)
     return node
 
@@ -434,6 +449,7 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, llm: ChatOpenAI
 # Node wrappers for LangGraph
 def make_kernel_warp_divergence_annotator_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return kernel_warp_divergence_annotator(state, llm)
     return node
 
@@ -492,6 +508,7 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
 # Node wrappers for LangGraph
 def make_kernel_wdp_variables_annotator(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return kernel_wdp_variables_annotator(state, llm)
     return node
 
@@ -573,7 +590,8 @@ if (1)```\n\n"""
 
     print("\n\n\n")
     print("---------- BEGIN STEP 7a: WDP Extraction ----------")
-    print(f"\n{wdps}\n")
+    for wdp in wdps:
+        print(f"\nclassification: [{wdp.classification}]\nsource_code:[\n{wdp.source_code}]\n\n")
     print("---------- END STEP 7a: WDP Extraction ----------")
     print("\n\n\n")
 
@@ -582,6 +600,7 @@ if (1)```\n\n"""
 def make_wdp_extractor_node(llm):
     """Node wrapper for the WDP extractor."""
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return wdp_extractor(state, llm)
     return node
 
@@ -602,6 +621,11 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI)
     calculator_llm = llm.with_structured_output(NumExecutions)
 
     wdps = state["wdps_list"]
+
+    print("\n\n\n")
+    print("WDPS")
+    print(wdps)
+    print("\n\n\n")
 
     print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------")
 
@@ -667,6 +691,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, llm: ChatOpenAI)
 def make_wdp_num_executions_calculations_node(llm):
     """Node wrapper for the WDP number of executions calculator."""
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return wdp_num_executions_calculations(state, llm)
     return node
 
@@ -729,6 +754,7 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, llm: ChatOpenAI):
 # Node wrappers for LangGraph
 def make_kernel_num_ops_annotator_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return kernel_num_ops_annotator(state, llm)
     return node
 
@@ -774,6 +800,7 @@ def kernel_ops_summarizer(state: KernelAnalysisState, llm: ChatOpenAI):
 # Node wrappers for LangGraph
 def make_kernel_ops_summarizer_node(llm):
     def node(state):
+        #saver.put(config=config, checkpoint=state)
         return kernel_ops_summarizer(state, llm)
     return node
 
@@ -822,7 +849,8 @@ def build_cuda_kernel_ops_graph(llm, show_mermaid_png: bool = False):
 
     # Set entrypoint
     workflow.set_entry_point("src_input_args_concretizer_1")
-    compiled = workflow.compile()
+
+    compiled = workflow.compile(checkpointer=saver)
 
     # Draw and save the graph as a PNG image if requested
     if show_mermaid_png:
