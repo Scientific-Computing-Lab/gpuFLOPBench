@@ -3,6 +3,8 @@ from typing import Annotated, Literal
 from .dataset import target_names
 
 
+#llm_nodes = ["get_input_problem_0"]
+
 llm_nodes = [
             "src_input_args_concretizer_1", 
             "src_single_kernel_execution_modifier_2", 
@@ -61,7 +63,7 @@ class Configuration(BaseModel):
         Literal[
             *target_names
         ],
-        {"__template_metadata__": {"kind": "input_problem"}},
+        {"__template_metadata__": {"kind": "llm"}},
     ] = Field(
         default="resize-cuda",
         description="The name of the input CUDA program to study.",

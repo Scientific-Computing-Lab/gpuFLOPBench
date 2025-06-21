@@ -1,39 +1,40 @@
 from utils.state import KernelAnalysisState, WarpDivergencePoint
-from utils.configuration import Configuration
 
 from typing_extensions import TypedDict, List
 from pydantic import BaseModel, Field
 from langchain.prompts import ChatPromptTemplate
-from langchain_openai.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
+
+#from langchain.chat_models import init_chat_model
+from langchain_core.runnables import ConfigurableField
 
 from .dataset import df
 
-def setup_llm(config):
-    llm_name = config.get("configurable", {}).get("model", "openai/o3-mini")
-    temp = config.get("configurable", {}).get("temp", 0.2)
-    top_p = config.get("configurable", {}).get("top_p", 0.1)
-    provider_url = config.get("configurable", {}).get("provider_url", "https://openrouter.ai/api/v1")
-    provider_api_key = config.get("configurable", {}).get("provider_api_key", "").strip()
-
-    assert provider_api_key, "Provider API key is required. Please set the 'provider_api_key' in the configuration."
-
-    print(f"LLM Name:{llm_name}")
-    print(f"Prodiver API Key:{provider_api_key}")
-    print(f"Prodiver URL:{provider_url}")
-    print(f"Top-p:{top_p}")
-    print(f"temp:{temp}")
-
-    # setup our LLM
-    llm = ChatOpenAI(
-      openai_api_key=provider_api_key,
-      openai_api_base=provider_url,
-      temperature=temp,
-      top_p=top_p,
-      model_name=llm_name,
+# The ids of the configurables are from the Configuration class in configuration.py
+# This is needed to allow us to change the variables at runtime
+llm = ChatOpenAI(
+  openai_api_key="",
+  openai_api_base="https://openrouter.ai/api/v1",
+  temperature=0.2,
+  top_p=0.1,
+  model_name="openai/o3-mini",
+).configurable_fields(
+    model_name=ConfigurableField(
+        id="model",
+    ),
+    temperature=ConfigurableField(
+        id="temp",
+    ),
+    top_p=ConfigurableField(
+        id="top_p",
+    ),
+    openai_api_base=ConfigurableField(
+        id="provider_url",
+    ),
+    openai_api_key=ConfigurableField( 
+        id="provider_api_key",
     )
-
-    return llm
-
+)
 
 # Calculate the total number of threads from the gridSz and the blockSz
 # grid size is a string of format "(x, y, z)"
@@ -59,8 +60,10 @@ def get_input_problem(state: KernelAnalysisState, config):
             'exec_args' : row['exeArgs'],
             'grid_size' : row['Grid Size'],
             'block_size' : row['Block Size'],
-            'total_num_threads' : calc_total_threads(row['Grid Size'], row['Block Size'])
+            'total_num_threads' : calc_total_threads(row['Grid Size'], row['Block Size']),
             }
+
+
 
 
 
@@ -72,8 +75,6 @@ with open('./example_codes/step1_example_after.cu', 'r') as file:
         step1_example_after = file.read()
 
 def src_input_args_concretizer(state: KernelAnalysisState, config):
-
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -97,7 +98,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
          "Source code:\n```{source_code}```\n\n"
          )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     updated_source = chain.invoke({
         "source_code": state["source_code"],
         "kernel_name": state["kernel_name"],
@@ -132,7 +133,6 @@ with open('./example_codes/step2_example_after.cu', 'r') as file:
 
 
 def src_single_kernel_execution_modifier(state: KernelAnalysisState, config): 
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -152,7 +152,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
          "Source code:\n{updated_source}\n"
          )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     single_kernel_source = chain.invoke({
         "updated_source": state["src_concretized_input_args"],
         "kernel_name": state["kernel_name"],
@@ -181,7 +181,6 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
 
 def first_kernel_invocation_snippet_extractor(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -231,7 +230,7 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
             "Source code:\n{updated_source}\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     first_kernel_invocation = chain.invoke({
         "updated_source": state["src_single_kernel_execution"],
         "kernel_name": state["kernel_name"],
@@ -257,7 +256,6 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
 
 
 def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -273,7 +271,7 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
             "Source code:\n{updated_source}\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     kernel_source_snippet = chain.invoke({
         "updated_source": state["src_single_kernel_execution"],
         "kernel_name": state["kernel_name"],
@@ -305,7 +303,6 @@ with open('./example_codes/step5_example_after.cu', 'r') as file:
     step5_example_after = file.read()
 
 def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -331,7 +328,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
             "Source code:\n{snippet_kernel_src}\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     snippet_kernel_src_concretized_values = chain.invoke({
         "snippet_kernel_src": state["snippet_kernel_src"],
         "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
@@ -357,7 +354,6 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
 
 def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -393,7 +389,7 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
             "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     kernel_annotated_warp_divergence = chain.invoke({
         "snippet_kernel_src_concretized_values": state["snippet_kernel_src_concretized_values"],
     }).content
@@ -420,7 +416,6 @@ with open('./example_codes/step7_example_after.cu', 'r') as file:
     step7_example_after = file.read()
 
 def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -442,7 +437,7 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
             "Kernel source code:\n{kernel_annotated_warp_divergence}\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     kernel_annotated_WDPs = chain.invoke({
         "kernel_annotated_warp_divergence": state["kernel_annotated_warp_divergence"],
         "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
@@ -486,7 +481,6 @@ class DivergencePointsList(BaseModel):
     )
 
 def wdp_extractor(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     """Extracts the warp divergence points as a list from the annotated kernel source code."""
     wdp_extractor_llm = llm.with_structured_output(DivergencePointsList)
@@ -534,7 +528,7 @@ if (1)```\n\n"""
             "Kernel source code:\n{kernel_annotated_WDPs}\n"
             )
     ])
-    chain = prompt | wdp_extractor_llm 
+    chain = prompt | wdp_extractor_llm.with_config(configurable=config.get("configurable", {}))
     wdps = chain.invoke({
         "kernel_annotated_WDPs": state["kernel_annotated_WDPs"],
         "step7_example_after": step7_example_after,
@@ -563,9 +557,6 @@ class NumExecutions(BaseModel):
 # Once we have the WDPs in a list, we can query each one using o3-mini to calculate the number of times the WDP will be executed 
 def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     """ Calculates the number of times each warp divergence point (WDP) will be executed based on mathematical summation logic."""
-
-    llm = setup_llm(config)
-
 
     calculator_llm = llm.with_structured_output(NumExecutions)
 
@@ -621,7 +612,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
                  )
             ])
 
-        chain = prompt | calculator_llm 
+        chain = prompt | calculator_llm.with_config(configurable=config.get("configurable", {}))
         num_executions = chain.invoke({
             "source_code_snippet": wdp.source_code,
         }).num_executions
@@ -652,7 +643,6 @@ with open('./example_codes/step8_examples.cu', 'r') as file:
     step8_examples = file.read()
 
 def kernel_num_ops_annotator(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -676,7 +666,7 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
             "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     kernel_annotated_num_ops = chain.invoke({
         "snippet_kernel_src_concretized_values": state["snippet_kernel_src_concretized_values"],
         "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
@@ -701,7 +691,6 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
 
 def kernel_ops_summarizer(state: KernelAnalysisState, config):
-    llm = setup_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -720,7 +709,7 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
             "Kernel source code with warp divergence and thread count annotations:\n{kernel_annotated_num_threads}\n\n"
             )
     ])
-    chain = prompt | llm
+    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
     summed_kernel_ops = chain.invoke({
         "kernel_annotated_num_ops": state["kernel_annotated_num_ops"],
         "kernel_annotated_num_threads": state["kernel_annotated_num_threads"],

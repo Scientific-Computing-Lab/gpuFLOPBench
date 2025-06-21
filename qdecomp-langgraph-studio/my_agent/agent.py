@@ -11,8 +11,6 @@ from langgraph.graph import StateGraph, END
 #    #os.environ['OPENROUTER_API_KEY'] = OPENROUTER_API_KEY
 
 
-config = {"configurable": {"thread_id": "1"}}
-
 workflow = StateGraph(KernelAnalysisState, config_schema=Configuration)
 
 workflow.add_node("get_input_problem_0", get_input_problem)

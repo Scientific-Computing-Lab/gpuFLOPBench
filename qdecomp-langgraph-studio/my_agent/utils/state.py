@@ -1,5 +1,6 @@
 from typing_extensions import TypedDict, List
 from pydantic import BaseModel, Field
+from langchain_openai import ChatOpenAI
 
 #class AgentState(TypedDict):
 #    messages: Annotated[Sequence[BaseMessage], add_messages]
