@@ -483,7 +483,7 @@ class DivergencePointsList(BaseModel):
 def wdp_extractor(state: KernelAnalysisState, config):
 
     """Extracts the warp divergence points as a list from the annotated kernel source code."""
-    wdp_extractor_llm = llm.with_structured_output(DivergencePointsList)
+    wdp_extractor_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(DivergencePointsList)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -528,7 +528,7 @@ if (1)```\n\n"""
             "Kernel source code:\n{kernel_annotated_WDPs}\n"
             )
     ])
-    chain = prompt | wdp_extractor_llm.with_config(configurable=config.get("configurable", {}))
+    chain = prompt | wdp_extractor_llm
     wdps = chain.invoke({
         "kernel_annotated_WDPs": state["kernel_annotated_WDPs"],
         "step7_example_after": step7_example_after,
@@ -558,7 +558,7 @@ class NumExecutions(BaseModel):
 def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     """ Calculates the number of times each warp divergence point (WDP) will be executed based on mathematical summation logic."""
 
-    calculator_llm = llm.with_structured_output(NumExecutions)
+    calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions)
 
     wdps = state["wdps_list"]
 
@@ -612,7 +612,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
                  )
             ])
 
-        chain = prompt | calculator_llm.with_config(configurable=config.get("configurable", {}))
+        chain = prompt | calculator_llm
         num_executions = chain.invoke({
             "source_code_snippet": wdp.source_code,
         }).num_executions
