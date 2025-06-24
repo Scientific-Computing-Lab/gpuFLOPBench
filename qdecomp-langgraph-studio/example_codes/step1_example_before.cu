@@ -71,7 +71,7 @@ void run_stencil2d(int num_iterations, int width, int height) {
 
     // Print a small sample of results for verification
     int yc = height / 2, xc = width / 2;
-    int y0 = std::max(0, yc - 2), y1 = std::min(height - 1, yc + 2);
+    int y0 = max(0, yc - 2), y1 = min(height - 1, yc + 2);
     int x0 = std::max(0, xc - 2), x1 = std::min(width - 1, xc + 2);
 
     std::cout << "Sample output (center 5x5 region):\n";

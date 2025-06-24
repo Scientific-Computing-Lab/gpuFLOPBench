@@ -1,4 +1,4 @@
-from utils.state import KernelAnalysisState, WarpDivergencePoint
+from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker
 
 from typing_extensions import TypedDict, List
 from pydantic import BaseModel, Field
@@ -74,49 +74,133 @@ with open('./example_codes/step1_example_before.cu', 'r') as file:
 with open('./example_codes/step1_example_after.cu', 'r') as file:
         step1_example_after = file.read()
 
+concretization_rules = """1) When a value is being concretized/replaced, make sure to comment out the original line that is being replaced with the new concrete value, and add the new line below the original commented code.
+2) Show the steps taken in calculating any values as commented lines. 
+3) If a variable is derived from more than 1 variable, only fill in the variables, do not evaluate the expression to a single value. Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated values`.
+4) For CUDA kernel invocations, make sure all possible kernel input arguments are made explicit using the concrete values.
+5) If the `auto` keyword is used, replace it with the correct corresponding concrete type.
+6) If a ternary operator is encountered, convert it to a regular if statement and mark the conversion with the comment of `// CONVERTED TERNARY TO IF STATEMENT`.
+7) DO NOT change `min` or `max` operations to `if` statements.
+8) DO NOT include any additional comments or explanations in the output.
+9) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"""
+
 def src_input_args_concretizer(state: KernelAnalysisState, config):
 
+    # if we have some feedback messages, let's use them
+    if len(state["step1_messages"]) != 0:
+        msg_history = state["step1_messages"]
+        concretizationState = state["concretizationState"]
+
+        error_msg = ChatPromptTemplate.from_messages(msg_history + [
+             ("assistant",
+              "The concretization was rejected with the following reason(s):\n{reason}\n"
+              "Please update the erroneous concretized source code with the necessary changes to make the concretization correct.\n")
+        ])
+
+        chain = error_msg | llm.with_config(configurable=config.get("configurable", {}))
+
+        result = chain.invoke({
+            "reason": concretizationState.rejectReason,
+        })
+
+
+        updated_source = result.content
+
+        return {"src_concretized_input_args": updated_source,
+            "step1_messages": [result]}
+
+    # this is the default path to use -- we hope the LLM agrees
+    else:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", 
+             "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values.\n"
+             "Be sure to follow the following rules when transforming the source code:\n{concretization_rules}\n"
+             "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
+             "{step1_example_before}\n\n"
+             "{step1_example_after}\n\n"
+             ),
+            ("human", 
+             "Target Kernel Name: {kernel_name}\n"
+             "Execution Arguments: {exec_args}\n"
+             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
+             "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to calculate as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
+             "Source code:\n```{source_code}```\n\n"
+             )
+        ])
+        chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
+
+        inputs = {
+            "source_code": state["source_code"],
+            "kernel_name": state["kernel_name"],
+            "exec_args": state["exec_args"],
+            "grid_size": state["grid_size"],
+            "block_size": state["block_size"], 
+            "total_num_threads": state["total_num_threads"], 
+            "step1_example_before": step1_example_before,
+            "step1_example_after": step1_example_after,
+            "concretization_rules": concretization_rules,
+        }
+
+        result = chain.invoke(inputs)
+
+        updated_source = result.content
+
+        #print("\n\n\n")
+        #print("---------- BEGIN STEP 1: Source Code Concretization ----------")
+        #print(f"\n{updated_source}\n")
+        #print("---------- END STEP 1: Source Code Concretization ----------")
+        #print("\n\n\n")
+
+        return {"src_concretized_input_args": updated_source,
+            "step1_messages": prompt.format_messages(**inputs)+[result]}
+
+
+
+
+
+
+
+
+
+# we're going to force this node to give us structured output (i.e: a tool call)
+def concretization_checker(state: KernelAnalysisState, config):
+
+    concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker)
+
+    msg_histroy = state["step1_messages"]
+
+    # this node is used to check how well the concretization worked
     prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values.\n"
-         "When a value is being concretized/replaced, make sure to comment out the original line that is being replaced with the new concrete value, and add the new line below the original commented code.\n"
-         "Show the steps taken in calculating any values as commented lines.\n"
-         "Only replace the variables in arightmetic expressions, and include a comment below any variables that are calculated to single values, indicated by a `// Calculated value(s)` comment.\n"
-         "If a value is derived from other value(s), show the steps to arrive at the hard-coded value. For CUDA kernel invocations, make sure all possible kernel input arguments are made explicit using the concrete values.\n"
-         "If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else."
-         "Do not include any additional comments or explanations in the output.\n"
-         "If the `auto` keyword is used, replace it with the corresponding concrete type.\n"
-         "If a ternary operator is encountered, convert it to a regular if statement and mark the conversion with the comment of `// CONVERTED TERNARY TO IF STATEMENT`.\n"
-         "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
-         "{step1_example_before}\n\n"
-         "{step1_example_after}\n\n"),
-        ("human", 
-         "Target Kernel Name: {kernel_name}\n"
-         "Execution Arguments: {exec_args}\n"
-         "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-         "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to calculate as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
-         "Source code:\n```{source_code}```\n\n"
-         )
-    ])
-    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    updated_source = chain.invoke({
-        "source_code": state["source_code"],
-        "kernel_name": state["kernel_name"],
-        "exec_args": state["exec_args"],
-        "grid_size": state["grid_size"],
-        "block_size": state["block_size"], 
-        "total_num_threads": state["total_num_threads"], 
-        "step1_example_before": step1_example_before,
-        "step1_example_after": step1_example_after,
-    }).content
+         ("system",
+          "You are a code checker that verifies the concretization of the given C/C++ CUDA source code.\n" 
+          "Make sure that the returned concretized code follows the rules of the original system message.\n"
+          "If the concretization follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
+          "If the concretization fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the concretization is incorrect or what it may be missing.\n"
+          "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
+          "Below are the rules that the concretization must follow:\n"
+          "{concretization_rules}\n"
+          "Original system message and concretized source code response messages are provided below.\n"
+          ),
+    ] + msg_histroy)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 1: Source Code Concretization ----------")
-    print(f"\n{updated_source}\n")
-    print("---------- END STEP 1: Source Code Concretization ----------")
-    print("\n\n\n")
+    chain = prompt | concretization_checker_llm
 
-    return {"src_concretized_input_args": updated_source}
+    resultState = chain.invoke({
+        "concretization_rules": concretization_rules,
+    })
+
+    return {"concretizationState": resultState}
+
+
+def route_concretization_status_edge(state: KernelAnalysisState):
+    """
+    This function routes the edge based on the concretization status.
+    If the concretization is good, it returns the next node to execute.
+    If the concretization is not good, it returns the get_input_problem node to retry.
+    """
+    return state.get("concretizationState", {}).status
+
+
 
 
 
@@ -141,13 +225,12 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
          "The modifications should be done by commenting out parts of the original code to be changed, and adding the changes on a new line below the original commented code."
          "Only return the modified source code, nothing else.\nAn example is provided below:\n"
          "Example Before:\n"
-         "Target Kernel Name: example_kernel\n"
          "{step2_example_before}\n\n"
          "Example After:\n"
          "{step2_example_after}\n\n"),
         ("human", 
          "Target Kernel Name: {kernel_name}\n"
-         #"Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
+         "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
          "Please return the updated source code with only a single kernel invocation."
          "Source code:\n{updated_source}\n"
          )
@@ -156,9 +239,9 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
     single_kernel_source = chain.invoke({
         "updated_source": state["src_concretized_input_args"],
         "kernel_name": state["kernel_name"],
-        #"grid_size": state["grid_size"],
-        #"block_size": state["block_size"], 
-        #"total_num_threads": state["total_num_threads"], 
+        "grid_size": state["grid_size"],
+        "block_size": state["block_size"], 
+        "total_num_threads": state["total_num_threads"], 
         "step2_example_before": step2_example_before,
         "step2_example_after": step2_example_after,
     }).content
@@ -462,23 +545,8 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
 
 
 
-# Because this step 7 needs to be more fleshed-out, we create a schema for it to use in
-# extracting the WARP DIVERGENCE POINTS and their dependent variables.
 
 
-class DivergencePointsList(BaseModel):
-    # technically we only allow if, else-if, for, and while
-    # step 1 forces all the ternary to be converted to if statements
-    # and all the do-while loops to while loops,
-    # but some may escape through weak models that don't properly transform the code
-    # TODO: we need to account for switch case statements....
-
-    """A list of the warp divergence point objects from the kernel source code, with their conditional definition, logic, dependent variables, variables reasoning, and classification. Each warp divergence point is represented as a WarpDivergencePoint object, with a `source_code` string of the warp divergence point, and a `classification` of the warp divergence point from the list: {for, if, else-if, while, do-while, ternary}."""
-
-    warp_divergence_points: List[WarpDivergencePoint] = Field(
-        ...,
-        description="A list of WarpDivergencePoint objects containing the information about warp divergence points in the kernel source code, where each object contains the source code (source_code) of the warp divergence point and its classification (classification). The classification can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary', and is used to classify the type of warp divergence point. The start of the source code of the warp divergence point should is indicated by the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment. The source shuold include lines up to (and including) the conditional/loop-logic definitions. DO NOT include the code block that the warp divergence points enclose, only the initial definition and necessary variables used in the warp divergence point entry logic.",
-    )
 
 def wdp_extractor(state: KernelAnalysisState, config):
 

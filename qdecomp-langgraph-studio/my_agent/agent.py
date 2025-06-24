@@ -15,6 +15,8 @@ workflow = StateGraph(KernelAnalysisState, config_schema=Configuration)
 
 workflow.add_node("get_input_problem_0", get_input_problem)
 workflow.add_node("src_input_args_concretizer_1", src_input_args_concretizer)
+workflow.add_node("concretization_checker_1a", concretization_checker)
+
 workflow.add_node("src_single_kernel_execution_modifier_2", src_single_kernel_execution_modifier)
 workflow.add_node("first_kernel_invocation_snippet_extractor_3", first_kernel_invocation_snippet_extractor)
 workflow.add_node("kernel_source_snippet_extractor_4", kernel_source_snippet_extractor)
@@ -30,7 +32,16 @@ workflow.add_node("kernel_ops_summarizer_9", kernel_ops_summarizer)
 # Graph edges
 workflow.add_edge("get_input_problem_0", "src_input_args_concretizer_1")
 
-workflow.add_edge("src_input_args_concretizer_1", "src_single_kernel_execution_modifier_2")
+workflow.add_edge("src_input_args_concretizer_1", "concretization_checker_1a")
+
+workflow.add_conditional_edges(source="concretization_checker_1a", 
+                               path=route_concretization_status_edge,
+                               path_map={
+                                      "ACCEPT": "src_single_kernel_execution_modifier_2",
+                                      "REJECT": "src_input_args_concretizer_1"
+                               },)
+
+#workflow.add_edge("src_input_args_concretizer_1", "src_single_kernel_execution_modifier_2")
 
 workflow.add_edge("src_single_kernel_execution_modifier_2", "first_kernel_invocation_snippet_extractor_3")
 

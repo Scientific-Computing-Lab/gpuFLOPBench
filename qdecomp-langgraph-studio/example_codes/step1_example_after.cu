@@ -50,8 +50,8 @@ void run_stencil2d(int num_iterations, int width, int height) {
 
     // Initialize input
     // for (int i = 0; i < width * height; ++i)
-    // for (int i = 0; i < 3000 * 1500; ++i)
-    for (int i = 0; i < 4500000; ++i)
+    for (int i = 0; i < 3000 * 1500; ++i)
+    // for (int i = 0; i < 4500000; ++i) // Calculated values
         // h_in[i] = static_cast<T>((i % 100) * 0.1);
         h_in[i] = static_cast<float>((i % 100) * 0.1);
 
@@ -68,8 +68,8 @@ void run_stencil2d(int num_iterations, int width, int height) {
     for (int iter = 0; iter < 10; ++iter) {
         // Vary block size between BLOCK_SIZE_MIN and BLOCK_SIZE_MAX
         // int block_size = BLOCK_SIZE_MIN + (iter % (BLOCK_SIZE_MAX - BLOCK_SIZE_MIN + 1));
-        // int block_size = 8 + (iter % (32 - 8 + 1));
-        int block_size = 8 + (iter % (25)); // Calculated values
+        int block_size = 8 + (iter % (32 - 8 + 1));
+        // int block_size = 8 + (iter % (25)); // Calculated values
         // if (block_size > BLOCK_SIZE_MAX) block_size = BLOCK_SIZE_MAX;
         if (block_size > 32) block_size = 32;
         // if (block_size < BLOCK_SIZE_MIN) block_size = BLOCK_SIZE_MIN;
@@ -90,6 +90,12 @@ void run_stencil2d(int num_iterations, int width, int height) {
     // T* d_result = (num_iterations % 2 == 0) ? d_in : d_out;
     float* d_result = (10 % 2 == 0) ? d_in : d_out;
     // float* d_result = (true) ? d_in : d_out; // Calculated value
+    // CONVERTED TERNARY TO IF STATEMENT
+    if (1) {
+        d_result = d_in;
+    } else {
+        d_result = d_out;
+    }
     cudaMemcpy(h_out, d_result, size, cudaMemcpyDeviceToHost);
 
     // Print a small sample of results for verification
@@ -97,9 +103,9 @@ void run_stencil2d(int num_iterations, int width, int height) {
     int yc = 1500 / 2, xc = 3000 / 2;
     // int yc = 750, xc = 1500; //Calculated values
 
-    // int y0 = std::max(0, yc - 2), y1 = std::min(height - 1, yc + 2);
-    int y0 = std::max(0, 750 - 2), y1 = std::min(1500 - 1, 750 + 2);
-    // int y0 = std::max(0, 748), y1 = std::min(1499, 752); // Calculated values
+    // int y0 = max(0, yc - 2), y1 = min(height - 1, yc + 2);
+    int y0 = max(0, 750 - 2), y1 = min(1500 - 1, 750 + 2);
+    // int y0 = max(0, 748), y1 = min(1499, 752); // Calculated values
     // int y0 = 748, y1 = 752; // Calculated values
 
     //int x0 = std::max(0, xc - 2), x1 = std::min(width - 1, xc + 2);

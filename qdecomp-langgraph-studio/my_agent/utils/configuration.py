@@ -4,6 +4,7 @@ from .dataset import target_names
 
 llm_nodes = [
             "src_input_args_concretizer_1", 
+            "concretization_checker_1a",
             "src_single_kernel_execution_modifier_2", 
             "first_kernel_invocation_snippet_extractor_3", 
             "kernel_source_snippet_extractor_4", 
@@ -39,13 +40,18 @@ class Configuration(BaseModel):
 
     model: Annotated[
         Literal[
-            "openai/gpt-4.1-nano",
-            "openai/gpt-4.1-mini",
-            "openai/gpt-4o-mini",
-            "openai/o4-mini-high",
-            "openai/o4-mini",
-            "openai/o3-mini-high",
-            "openai/o3-mini",
+            "openai/gpt-4.1-nano", # in $0.1 out $0.4
+            "openai/gpt-4.1-mini", # in $0.4 out $1.6
+            "openai/gpt-4o-mini", # in $0.15 out $0.6
+            "openai/o4-mini-high", # in $1.1 out $4.4
+            "openai/o4-mini", # in $1.1 out $4.4
+            "openai/o3-mini-high", # in $1.1 out $4.4
+            "openai/o3-mini", # in $1.1 out $4.4
+            "google/gemini-flash-1.5", # in $0.075 out $0.3
+            "google/gemini-2.0-flash-lite-001", # in $0.075 out $0.3
+            "google/gemini-2.0-flash-001", # in $0.1 out $0.4
+            "google/gemini-2.5-flash", # in $0.3 out $2.5
+            "anthropic/claude-3.5-haiku" # in $0.8 out $4.0
         ],
         {"__template_metadata__": {"kind": "llm"}},
     ] = Field(
