@@ -43,6 +43,10 @@ class ConcretizationChecker(BaseModel):
         ..., 
         description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
         )
+    acceptReason: str = Field(
+        ..., 
+        description="The brief reasoning behind a 'ACCEPT' status. Leave empty if the status is 'REJECT'."
+        )
     
 
 class SingleKernelState(BaseModel):
@@ -56,6 +60,10 @@ class SingleKernelState(BaseModel):
         ..., 
         description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
         )
+    acceptReason: str = Field(
+        ..., 
+        description="The brief reasoning behind a 'ACCEPT' status. Leave empty if the status is 'REJECT'."
+        )
 
 class NumOpsState(BaseModel):
     """ A class used to structure the output of the num ops annotator checker node."""
@@ -68,6 +76,26 @@ class NumOpsState(BaseModel):
         ..., 
         description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
         )
+    acceptReason: str = Field(
+        ..., 
+        description="The brief reasoning behind a 'ACCEPT' status. Leave empty if the status is 'REJECT'."
+        )
+
+# We create a custom structured output so that models return the number of iterations executed for each warp divergence point
+class NumExecutions(BaseModel):
+    num_executions: int = Field(..., description="Calculated number of times the source code will be executed based on the mathematical summation logic provided in the prompt. This is a single integer value representing the total number of times the given code snippet will be executed for the provided conditional values. -1 indicates that we are unable to calculate an exact integer number of executions.")
+
+    num_executions_explanation: str = Field(..., description="Explanation of how the number of executions was calculated. This should include the reasoning behind the number of executions performed. The explanation should be clear and concise, providing insight into the mathematical logic used to derive the number of executions.")
+
+
+class FLOPCounts(BaseModel):
+    sp_flop_count: int = Field(..., description="Total number of single-precision floating point operations (SP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
+
+    sp_flop_explanation: str = Field(..., description="Explanation of how the single-precision floating point operations (SP-FLOP) count was calculated. This should include the reasoning behind the number of operations performed in the kernel, including any relevant loop iterations and warp divergence region executions.")
+
+    dp_flop_count: int = Field(..., description="Total number of double-precision floating point operations (DP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
+
+    dp_flop_explanation: str = Field(..., description="Explanation of how the double-precision floating point operations (DP-FLOP) count was calculated. This should include the reasoning behind the number of operations performed in the kernel, including any relevant loop iterations and warp divergence region executions.")
 
 
 # Updated KernelAnalysisState using TypedDict with default values for optional fields
@@ -78,6 +106,8 @@ class KernelAnalysisState(TypedDict, total=False):
     grid_size: str
     block_size: str
     total_num_threads: str
+    empirical_sp_flop_count: int
+    empirical_dp_flop_count: int
 
     # these will be filled in by the nodes
 
@@ -105,10 +135,16 @@ class KernelAnalysisState(TypedDict, total=False):
     kernel_annotated_WDPs: str
 
     wdps_list: List[WarpDivergencePoint]  # List of tuples with warp divergence point source code and classification
-    wdps_num_executions : List[int] # Corresponding number of executions for each warp divergence point
+    wdps_num_executions: List[NumExecutions] # Corresponding number of executions for each warp divergence point
 
     kernel_annotated_num_ops: str
     step8_messages: Annotated[List, add_messages]
     numOpsAnnotationState: NumOpsState
 
-    summed_kernel_ops: str
+    summed_kernel_ops: FLOPCounts
+
+    sp_flop_diff: float
+    dp_flop_diff: float
+
+    sp_flop_perc_diff: float
+    dp_flop_perc_diff: float

@@ -1,6 +1,6 @@
-from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState, NumOpsState
+from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState, NumOpsState, FLOPCounts, NumExecutions
 
-from typing_extensions import TypedDict, List
+from typing_extensions import TypedDict, List, Literal
 from pydantic import BaseModel, Field
 from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -61,6 +61,10 @@ def get_input_problem(state: KernelAnalysisState, config):
             'grid_size' : row['Grid Size'],
             'block_size' : row['Block Size'],
             'total_num_threads' : calc_total_threads(row['Grid Size'], row['Block Size']),
+            # these "true" values do not get passed to the LLMs
+            # they are used to calculate how close the LLM prediction is to the ground-truth
+            'empirical_sp_flop_count' : row['spPerf']*(1e3*row['xtime']),
+            'empirical_dp_flop_count' : row['dpPerf']*(1e3*row['xtime']),
             }
 
 
@@ -172,6 +176,7 @@ def concretization_checker(state: KernelAnalysisState, config):
           "You are a code checker that verifies the concretization of the given C/C++ CUDA source code.\n" 
           "Make sure that the returned concretized code follows the rules of the original system message.\n"
           "If the concretization follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
+          "The acceptReason field should explain why the 'ACCEPT' status was given, and state all the reasons why the concretization is correct.\n"
           "If the concretization fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the concretization is incorrect or what it may be missing.\n"
           "The rejectReason should state all the possible reasons why the concretization may be incorrect."
           "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
@@ -300,6 +305,7 @@ def single_kernel_execution_checker(state: KernelAnalysisState, config):
           "The resulting source code should only contain a single invocation of the target kernel name, with the correct grid and block sizes, and no other kernels or loops that invoke the target kernel multiple times.\n"
           "Make sure that the returned source code follows the rules of the original system message.\n"
           "If the transformed code follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
+          "The acceptReason field should explain why the 'ACCEPT' status was given, and state all the possible reasons why the transformation is correct.\n"
           "If the transformed code fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the transformation is incorrect or what it may be missing.\n"
           "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
           "Original system message and transformed source code response messages are provided below.\n"
@@ -748,7 +754,7 @@ int applyScaleFactor = (1250.0 > 1000) ? 1 : 0;```\n\n"""
         "classification = if\n"
         """source_code = ```// Condition is always true, this region will always be executed
 if (1)```\n\n"""
-        "The warp divergence regions to extract are annotated with a `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment for identification. DO NOT include the code block that the warp divergence points enclose, only the initial definition and necessary variables used in the warp divergence point entry logic.\n"
+        "The warp divergence regions to extract are annotated with a `// WARP DIVERGENCE POINT X -- VARIABLES REASONING` comment for identification. DO NOT include the code block that the warp divergence points enclose, only the initial definition and necessary variables used in the warp divergence point entry logic.\n"
          ),
         ("human",
             "Please return a list of the warp divergence point (classification, source_code) tuples from the following source code."
@@ -777,9 +783,6 @@ if (1)```\n\n"""
 
 
 
-# We create a custom structured output so that models return the number of iterations executed for each warp divergence point
-class NumExecutions(BaseModel):
-    num_executions: int = Field(..., description="Calculated number of times the source code will be executed based on the mathematical summation logic provided in the prompt. This is a single integer value representing the total number of times the given code snippet will be executed for the provided conditional values. -1 indicates that we are unable to calculate an exact integer number of executions.")
 
 # Once we have the WDPs in a list, we can query each one using o3-mini to calculate the number of times the WDP will be executed 
 def wdp_num_executions_calculations(state: KernelAnalysisState, config):
@@ -819,9 +822,9 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
                  "2) Create a mathematical formula that sums the total number of iterations performed for all valid input variables within the supplied ranges.\n"
                  "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
                 "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the loop will never execute.\n"
+                "The mathematical formulas and reasoning behind the calculations should be provided in the num_executions_explanation field of the tool call.\n"
                  )
             ])
-            pass
         elif condition_type == 'for':
             prompt = ChatPromptTemplate.from_messages([
                 ("system", 
@@ -836,8 +839,11 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
                  "2) Create a mathematical formula that sums the total number of executions performed for all valid input variables within the supplied ranges.\n"
                  "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of executions from all the valid input variables within the supplied ranges.\n"
                 "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the conditional will never execute.\n"
+                "The mathematical formulas and reasoning behind the calculations should be provided in the num_executions_explanation field of the tool call.\n"
                  )
             ])
+        else:
+            raise ValueError(f"Unsupported WDP classification for number of executions calculation: {condition_type}. Supported classifications are: 'if', 'for'.")
 
         chain = prompt | calculator_llm
 
@@ -850,12 +856,14 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
         num_executions = result.num_executions
 
         print("\n")
-        print(f"\t\t [{idx+1}] ({condition_type}) Number of Executions Calculation {num_executions}") 
+        print(f"\t\t [{idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions}]") 
         print("\n")
 
-        calculated_executions.append(num_executions)
+        calculated_executions.append(result)
 
     print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
+
+    print("wdps_num_executions:", calculated_executions)
 
     return {"wdps_num_executions": calculated_executions}
 
@@ -965,8 +973,9 @@ def num_ops_checker(state: KernelAnalysisState, config):
           "Make sure that the returned code follows the rules of the original system message.\n"
           "If the annotated code follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
           "If the annotated fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the annotations are incorrect or what it may be missing.\n"
-          "The rejectReason should state all the possible reasons why the floating point operation counts may be incorrect."
+          "The rejectReason should explain why the 'REJECT' status was given, and state all the possible reasons why the floating point operation counts may be incorrect."
           "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
+          "The acceptReason should explain why the 'ACCEPT' status was given, and why the annotations are correct and how they follow the rules of the original system message.\n"
           "Below are the rules that the annotations must follow:\n"
           "{kernel_num_ops_rules}\n"
           "Original system message and source code response messages are provided below.\n"
@@ -982,7 +991,7 @@ def num_ops_checker(state: KernelAnalysisState, config):
     return {"numOpsAnnotationState": resultState}
 
 
-def route_num_ops_annotation_status_edge(state: KernelAnalysisState):
+def route_num_ops_annotation_status_edge(state: KernelAnalysisState) -> Literal["ACCEPT", "REJECT"]:
     return state.get("numOpsAnnotationState", {}).status
 
 
@@ -997,32 +1006,54 @@ def route_num_ops_annotation_status_edge(state: KernelAnalysisState):
 
 def kernel_ops_summarizer(state: KernelAnalysisState, config):
 
+    wdps_list = state["wdps_list"]
+
+    num_executions = state["wdps_num_executions"]
+
+    wdps = zip(wdps_list, num_executions)
+
+    wdps_string = ""
+
+    for wdp, num_executions in wdps:
+        if num_executions.num_executions <= 0:
+            wdps_string += f"\n{wdp.source_code.strip()}\n Could not calculate the exact number of executions for this warp divergence point.\n\n"
+        else:
+            wdps_string += f"\n{wdp.source_code.strip()}\nNumber of ({wdp.classification}) executions: {num_executions.num_executions}\n\n"
+
+    print("WDPS STRING", wdps_string)
+
+    flop_counts_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts)
+
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
-         #"You are a code summarizer that summarizes the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
-         "You are a code summarizer that summarizes the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
-         "You will be given two annotated source code snippets: one with warp divergence points annotated with the number of threads that will execute at each part of the kernel code, and another with the number of operations performed at each line of the kernel code.\n"
+         "You are a CUDA kernel FLOP count calculator that sums the total number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed by the given C/C++ CUDA kernel source code snippet.\n"
+         "You will be given two annotated source code snippets: one with warp divergence points annotated with the number of executions they will perform across all threads, and another with the number of FLOP operations performed at each line of the kernel code.\n"
          "Use the annotated codes to sum up the total number of operations performed by the kernel, accounting for the number of threads that will enter each warp divergence point.\n"
          "The output should briefly explain how it arrived at the total number of SP-FLOP and DP-FLOP operations performed by the kernel.\n"
-         "At the end of the summary, return the final summed counts as in the example below:\n"
-         "SP-FLOP: YYY\nDP-FLOP: ZZZ\n"
+         "At the end of the summary, return the final summed counts using a tool call with sp_flop_count and dp_flop_count representing the total sums of the single and double precision floating point operations, respectively."
+         "The logic/explanations for how the total number of operations were calculated should be included as sp_flop_explanation and dp_flop_explanation in the tool call.\n"
          ),
         ("human",
             "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
             "Kernel source code with SP-FLOP, and DP-FLOP annotations:\n{kernel_annotated_num_ops}\n"
-            "Kernel source code with warp divergence and thread count annotations:\n{kernel_annotated_num_threads}\n\n"
+            "Kernel source code warp divergence snippets and their associated number of execution counts:\n{wdps_string}\n\n"
             )
     ])
-    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    summed_kernel_ops = chain.invoke({
+    chain = prompt | flop_counts_llm
+
+    inputs = {
         "kernel_annotated_num_ops": state["kernel_annotated_num_ops"],
-        "kernel_annotated_num_threads": state["kernel_annotated_num_threads"],
+        "wdps_string": wdps_string,
         "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"],
-    }).content
+    }
+
+    result = chain.invoke(inputs)
+
+    summed_kernel_ops = result
 
     print("\n\n\n")
     print("---------- BEGIN STEP 9: Kernel Operations Summary ----------")
@@ -1030,4 +1061,12 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
     print("---------- END STEP 9: Kernel Operations Summary ----------")
     print("\n\n\n")
 
-    return {"summed_kernel_ops": summed_kernel_ops}
+    empirical_sp_flop_count = state.get("empirical_sp_flop_count", 0)
+    empirical_dp_flop_count = state.get("empirical_dp_flop_count", 0)
+
+    return {"summed_kernel_ops": summed_kernel_ops,
+            "sp_flop_diff": summed_kernel_ops.sp_flop_count - empirical_sp_flop_count,
+            "sp_flop_perc_diff": ((summed_kernel_ops.sp_flop_count - empirical_sp_flop_count) * 100 / empirical_sp_flop_count) if empirical_sp_flop_count != 0 else 0,
+            "dp_flop_diff": summed_kernel_ops.dp_flop_count - empirical_dp_flop_count,
+            "dp_flop_perc_diff": ((summed_kernel_ops.dp_flop_count - empirical_dp_flop_count) * 100 / empirical_dp_flop_count) if empirical_dp_flop_count != 0 else 0,
+            }

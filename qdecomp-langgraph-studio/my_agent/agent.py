@@ -93,10 +93,11 @@ workflow.add_edge([
     ],  "kernel_num_ops_annotator_8")
 
 workflow.add_edge("kernel_num_ops_annotator_8", "num_ops_checker_8a")
+
 workflow.add_conditional_edges(source="num_ops_checker_8a", 
                                path=route_num_ops_annotation_status_edge,
                                path_map={
-                                      "ACCEPT": "kernel_ops_summarizer_9",
+                                      "ACCEPT": "wdp_num_execution_calculations_7b",
                                       "REJECT": "kernel_num_ops_annotator_8"
                                },)
 
