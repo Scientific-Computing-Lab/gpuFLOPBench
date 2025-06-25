@@ -1,4 +1,4 @@
-from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState
+from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState, NumOpsState
 
 from typing_extensions import TypedDict, List
 from pydantic import BaseModel, Field
@@ -452,90 +452,177 @@ with open('./example_codes/step5_example_before.cu', 'r') as file:
 with open('./example_codes/step5_example_after.cu', 'r') as file:
     step5_example_after = file.read()
 
+snippet_concretization_rules = """1) If a value is derived from other value(s), also replace it with the hard-coded value. 
+2) Make sure all possible variables and arguments are made explicit using the provided hard-coded values and their descriptions.
+3) If the `auto` keyword is used, replace it with the correct concrete type.
+4) Be sure to replace any blockDim and gridDim variables (e.g: `blockDim.x` or `gridDim.y`) with their concrete values, as well as any other variables that are derived from the kernel invocation arguments.
+5) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"
+6) Ensure to comment the original lines that are being replaced with the new concrete values, and add the new lines below the original commented code.
+7) Any lines that use blockIdx or threadIdx should have a comment below them indicating the range of values that will be used for those variables.
+8) Any variables that are derived from other variables using blockIdx, threadIdx, blockDim, or gridDim should also include a comment indicating the range of values that will be used for those variables.
+9) If a variable can be concretized, but is based off an expression, only fill in the variables it uses, do not evaluate the expression to a single value. 
+10) Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"""
+
 def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
+    # if we have some feedback messages, let's use them
+    if len(state["step5_messages"]) != 0:
+        msg_history = state["step5_messages"]
+        concretizationState = state["snippetConcretizationState"]
+
+        error_msg = ChatPromptTemplate.from_messages(msg_history + [
+             ("assistant",
+              "The concretization was rejected with the following reason(s):\n{reason}\n"
+              "Please update the erroneous concretized source code with the necessary changes to make the concretization correct.\n")
+        ])
+
+        chain = error_msg | llm.with_config(configurable=config.get("configurable", {}))
+
+        inputs = {
+            "reason": concretizationState.rejectReason,
+        }
+
+        result = chain.invoke(inputs)
+
+        snippet_kernel_src_concretized_values = result.content
+
+        return {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
+                "step5_messages": error_msg.format_messages(**inputs) + [result]}
+
+    # this is the default path to use -- we hope the LLM agrees
+    else:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", 
+             "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA kernel source code snippet with their corresponding hard-coded input argument literal values from the given kernel invocation arguments and evaluated/derived source code values."
+             "Here are the rules you must follow when transforming the source code:\n"
+             "{snippet_concretization_rules}\n"
+             "Here is an example of the desired types of variable and explicit value concretization source code transformations:\n"
+             "Example Before:\n"
+             "{step5_example_before}\n\n"
+             "Example After:\n"
+             "{step5_example_after}\n\n"
+             ),
+            ("human",
+                "Target Kernel Name: ```{kernel_name}```\n"
+                "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n"
+                "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
+                "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to replace as many variables (including blockDim.x/y/z and gridDim.x/y/z variables) as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
+                "Source code:\n{snippet_kernel_src}\n"
+                )
+        ])
+        chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
+
+        inputs = {
+            "snippet_kernel_src": state["snippet_kernel_src"],
+            "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
+            "kernel_name": state["kernel_name"],
+            "grid_size": state["grid_size"],
+            "block_size": state["block_size"], 
+            "total_num_threads": state["total_num_threads"], 
+            "step5_example_before": step5_example_before,
+            "step5_example_after": step5_example_after,
+            "snippet_concretization_rules": snippet_concretization_rules,
+        }
+
+        result = chain.invoke(inputs)
+
+        snippet_kernel_src_concretized_values = result.content
+
+        #print("\n\n\n")
+        #print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------")
+        #print(f"\n{snippet_kernel_src_concretized_values}\n")
+        #print("---------- END STEP 5: Kernel Source Code Concretization ----------")
+        #print("\n\n\n")
+
+        return {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
+                "step5_messages": prompt.format_messages(**inputs) + [result]}
+
+
+# we're going to force this node to give us structured output (i.e: a tool call)
+def snippet_concretization_checker(state: KernelAnalysisState, config):
+
+    concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker)
+
+    msg_histroy = state["step5_messages"]
+
+    # this node is used to check how well the concretization worked
     prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA kernel source code snippet with their corresponding hard-coded input argument literal values from the given kernel invocation arguments and evaluated/derived source code values."
-         "If a value is derived from other value(s), also replace it with the hard-coded value. Make sure all possible variables and arguments are made explicit using the provided hard-coded values and their descriptions. "
-         "If the `auto` keyword is used, replace it with the correct concrete type."
-         "Be sure to replace any blockDim and gridDim variables (e.g: `blockDim.x` or `gridDim.y`) with their concrete values, as well as any other variables that are derived from the kernel invocation arguments."
-         "If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"
-         "Ensure to comment the original lines that are being replaced with the new concrete values, and add the new lines below the original commented code.\n"
-         "Any lines that use blockIdx or threadIdx should have a comment below them indicating the range of values that will be used for those variables.\n"
-         "If a variable can be concretized, but is based off an expression, only fill in the variables it uses, do not evaluate the expression to a single value. Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"
-         "Here is an example of the desired types of variable and explicit value concretization source code transformations:\n"
-         "Example Before:\n"
-         "{step5_example_before}\n\n"
-         "Example After:\n"
-         "{step5_example_after}\n\n"
-         ),
-        ("human",
-            "Target Kernel Name: ```{kernel_name}```\n"
-            "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n"
-            "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-            "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to replace as many variables (including blockDim and gridDim variables) as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
-            "Source code:\n{snippet_kernel_src}\n"
-            )
-    ])
-    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    snippet_kernel_src_concretized_values = chain.invoke({
-        "snippet_kernel_src": state["snippet_kernel_src"],
-        "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
-        "kernel_name": state["kernel_name"],
-        "grid_size": state["grid_size"],
-        "block_size": state["block_size"], 
-        "total_num_threads": state["total_num_threads"], 
-        "step5_example_before": step5_example_before,
-        "step5_example_after": step5_example_after,
-    }).content
+         ("system",
+          "You are a code checker that verifies the concretization of the given C/C++ CUDA source code.\n" 
+          "Make sure that the returned concretized code follows the rules of the original system message.\n"
+          "If the concretization follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
+          "If the concretization fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the concretization is incorrect or what it may be missing.\n"
+          "The rejectReason should state all the possible reasons why the concretization may be incorrect."
+          "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
+          "Below are the rules that the concretization must follow:\n"
+          "{snippet_concretization_rules}\n"
+          "Original system message and concretized source code response messages are provided below.\n"
+          ),
+    ] + msg_histroy)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------")
-    print(f"\n{snippet_kernel_src_concretized_values}\n")
-    print("---------- END STEP 5: Kernel Source Code Concretization ----------")
-    print("\n\n\n")
+    chain = prompt | concretization_checker_llm
 
-    return {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values}
+    resultState = chain.invoke({
+        "snippet_concretization_rules": snippet_concretization_rules,
+    })
+
+    return {"snippetConcretizationState": resultState}
+
+
+def route_snippet_concretization_status_edge(state: KernelAnalysisState):
+    """
+    This function routes the edge based on the concretization status.
+    If the concretization is good, it returns the next node to execute.
+    If the concretization is not good, it returns the get_input_problem node to retry.
+    """
+    return state.get("snippetConcretizationState", {}).status
 
 
 
 
 
 
+
+
+
+
+
+
+# step 6
 def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with warp divergence information.\n"
          "This means identifying the potential warp divergence points in the kernel code, such as conditional branches, loops, ternary, and other control flow statements that will cause threads within a warp to diverge.\n"
-         "If a conditional branch is always true or always false, it is still considered a warp divergence point.\n"
-         "min and max operations are not considered warp divergence points, as they do not cause threads to diverge within a warp.\n"
+         "If a conditional branch is always true or always false, it is NOT considered a warp divergence point, please disregard it.\n"
+         "For-loops and while-loops are always considered warp divergence points, as they can cause threads to diverge based on the loop condition.\n"
+         "min and max operations are NOT considered warp divergence points, as they do not cause threads to diverge within a warp.\n"
          "Annotate the code with comments indicating where warp divergence will occur.\n"
-         "The comment should appear only on conditional statements, and only on the line above the warp divergence point, in the format of `// WARP DIVERGENCE POINT`.\n"
+         "The comment should appear only on conditional statements (e.g: for, if, while), and only on the line above the warp divergence point, in the format of `// WARP DIVERGENCE POINT X`, where X is the number of the warp divergence region, which starts counting at 1 and increments by 1 for each warp divergence region found.\n"
          "Do not annotate lines that are commented out.\n"
-         "If an existing comment appears above a warp divergence point, add the `//WARP DIVERGENCE POINT` annotation AFTER the existing comment.\n"
+         "If an existing comment appears above a warp divergence point, add the `//WARP DIVERGENCE POINT X` annotation AFTER the existing comment.\n"
          "Code comment annotations should appear on the line immediately before the warp divergence point as in the examples below:\n"
          "If statement example:\n"
-         "```// WARP DIVERGENCE POINT\n"
+         "```// WARP DIVERGENCE POINT 1\n"
          "if (condition) {{...}}```\n\n"
 
          "While loop example:\n"
-         "```// WARP DIVERGENCE POINT\n"
+         "```// WARP DIVERGENCE POINT 2\n"
          "while (condition) {{...}}```\n\n"
 
          "For loop example:\n"
-         "```// WARP DIVERGENCE POINT\n"
+         "```// WARP DIVERGENCE POINT 3\n"
          "for (;;) {{...}}```\n\n"
 
          "Ternary example:\n"
-         "```// WARP DIVERGENCE POINT\n"
+         "```// WARP DIVERGENCE POINT 4\n"
          "a = b ? c : d;```\n\n"
          "Only return the annotated kernel source code, nothing else.\n"
          ),
         ("human",
             "Please return the annotated kernel source code with warp divergence indicators.\n"
-            "Ensure to mark ALL if statements, while loops, for loops, and ternary operators with the `// WARP DIVERGENCE POINT` comment.\n"
+            "Ensure to mark ALL allowed if statements, while loops, for loops, and ternary operators with the `// WARP DIVERGENCE POINT X` comment.\n"
             "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
             )
     ])
@@ -588,7 +675,8 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
             )
     ])
     chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    kernel_annotated_WDPs = chain.invoke({
+
+    inputs = {
         "kernel_annotated_warp_divergence": state["kernel_annotated_warp_divergence"],
         "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
         "grid_size": state["grid_size"],
@@ -596,13 +684,17 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
         "total_num_threads": state["total_num_threads"],
         "step7_example_before": step7_example_before,
         "step7_example_after": step7_example_after,
-    }).content
+    }
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
-    print(f"\n{kernel_annotated_WDPs}\n")
-    print("---------- END STEP 7: Kernel WDP Annotation ----------")
-    print("\n\n\n")
+    result = chain.invoke(inputs)
+
+    kernel_annotated_WDPs = result.content
+
+    #print("\n\n\n")
+    #print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
+    #print(f"\n{kernel_annotated_WDPs}\n")
+    #print("---------- END STEP 7: Kernel WDP Annotation ----------")
+    #print("\n\n\n")
 
     return {"kernel_annotated_WDPs": kernel_annotated_WDPs}
 
@@ -726,7 +818,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
                  "1) Create a mathematical formula that calculates the number of iterations the loop will perform for any given input variables within the supplied ranges.\n"
                  "2) Create a mathematical formula that sums the total number of iterations performed for all valid input variables within the supplied ranges.\n"
                  "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
-                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of -999 if the loop will always execute. Use a value of 0 if the loop will never execute.\n"
+                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the loop will never execute.\n"
                  )
             ])
             pass
@@ -742,15 +834,20 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
                  "Explain the following:\n"
                  "1) Create a mathematical formula that calculates the number of times the statement will be executed for any given input variables within the supplied ranges.\n"
                  "2) Create a mathematical formula that sums the total number of executions performed for all valid input variables within the supplied ranges.\n"
-                 "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
-                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of -999 if the conditional will always execute. Use a value of 0 if the conditional will never execute.\n"
+                 "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of executions from all the valid input variables within the supplied ranges.\n"
+                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the conditional will never execute.\n"
                  )
             ])
 
         chain = prompt | calculator_llm
-        num_executions = chain.invoke({
+
+        inputs = {
             "source_code_snippet": wdp.source_code,
-        }).num_executions
+        }
+
+        result = chain.invoke(inputs)
+
+        num_executions = result.num_executions
 
         print("\n")
         print(f"\t\t [{idx+1}] ({condition_type}) Number of Executions Calculation {num_executions}") 
@@ -777,49 +874,122 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
 with open('./example_codes/step8_examples.cu', 'r') as file:
     step8_examples = file.read()
 
+kernel_num_ops_rules = """
+1) Identify the number of SP-FLOP and DP-FLOP operations performed. 
+2) If a line is performing floating point operations, add a comment on the line above it indicating the number of operations performed.
+3) This comment should be followed by an explanation as to the number of FLOP operations for that line.
+4) If a fused-multiply-add (FMA) operation is encountered, count it as 2 operations (1 for the multiply and 1 for the add).
+5) If a loop with logic that performs floating point operations is encountered, annotate the number of operations performed by the loop continuation logic.
+6) DO NOT comment or annotate lines that are not performing floating point operations.
+7) Only consider arithmetic operations (ADD, SUB, MUL, DIV, FMA) involving floating point numbers.
+8) DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations.\n\n"""
+
 def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
+    # if we have some feedback messages, let's use them
+    if len(state["step8_messages"]) != 0:
+        msg_history = state["step8_messages"]
+        annotationState = state["numOpsAnnotationState"]
+
+        error_msg = ChatPromptTemplate.from_messages(msg_history + [
+             ("assistant",
+              "The concretization was rejected with the following reason(s):\n{reason}\n"
+              "Please update the erroneous concretized source code with the necessary changes to make the concretization correct.\n")
+        ])
+
+        chain = error_msg | llm.with_config(configurable=config.get("configurable", {}))
+
+        inputs = {
+            "reason": annotationState.rejectReason,
+        }
+
+        result = chain.invoke(inputs)
+
+        kernel_annotated_num_ops = result.content
+
+        return {"kernel_annotated_num_ops": kernel_annotated_num_ops,
+                "step8_messages": error_msg.format_messages(**inputs) + [result]}
+
+    else:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", 
+             "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
+             "For each line of the source code that performs floating point operations, follow these rules:\n"
+             "{kernel_num_ops_rules}\n"
+             "Only return the annotated kernel source code, nothing else.\n"
+             "Code annotations and comments should appear in the format of the example below:\n"
+             "Examples:\n{step8_examples}\n\n"
+             ),
+            ("human",
+                "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
+                "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
+                "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
+                )
+        ])
+        chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
+
+        inputs = {
+            "snippet_kernel_src_concretized_values": state["snippet_kernel_src_concretized_values"],
+            "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
+            "grid_size": state["grid_size"],
+            "block_size": state["block_size"], 
+            "total_num_threads": state["total_num_threads"],
+            "step8_examples": step8_examples,
+            "kernel_num_ops_rules": kernel_num_ops_rules,
+        }
+
+        result = chain.invoke(inputs)
+
+        kernel_annotated_num_ops = result.content
+
+        #print("\n\n\n")
+        #print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------")
+        #print(f"\n{kernel_annotated_num_ops}\n")
+        #print("---------- END STEP 8: Kernel Number of Operations Annotation ----------")
+        #print("\n\n\n")
+
+        return {"kernel_annotated_num_ops": kernel_annotated_num_ops,
+                "step8_messages": prompt.format_messages(**inputs) + [result]}
+
+
+def num_ops_checker(state: KernelAnalysisState, config):
+
+    num_ops_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumOpsState)
+
+    msg_histroy = state["step8_messages"]
+
+    # this node is used to check how well the concretization worked
     prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         #"You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of integer (INTOP), single-precision (SP-FLOP), and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
-         "You are a code annotator that analyzes the given C/C++ CUDA kernel source code snippet and annotates it with the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations performed at each part of the kernel code. "
-         "For each line of the source code, identify the number of SP-FLOP and DP-FLOP operations performed. If a line is performing floating point operations, add a comment on the line above it indicating the number of operations performed. This comment should be followed by an explanation as to the number of FLOP operations for that line. \n"
-         "If a fused-multiply-add (FMA) operation is encountered, count it as 2 operations (1 for the multiply and 1 for the add).\n"
-         "If a loop with logic that performs floating point operations is encountered, annotate the number of operations performed by the loop continuation logic.\n"
-         "DO NOT comment or annotate lines that are not performing floating point operations.\n"
-         "Only consider arithmetic operations (ADD, SUB, MUL, DIV, FMA).\n"
-         "DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations.\n"
-         "Only return the annotated kernel source code, nothing else.\n"
-         "Code annotations and comments should appear in the format of the example below:\n"
-         "Examples:\n{step8_examples}\n\n"
-         #"Example Before:\n{step8_example_before}\n\n"
-         #"Example After:\n{step8_example_after}\n\n"
-         ),
-        ("human",
-            "Kernel Invocation Arguments and Descriptions:\n{snippet_first_kernel_invocation}\n\n"
-            "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-            "Kernel source code:\n{snippet_kernel_src_concretized_values}\n"
-            )
-    ])
-    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    kernel_annotated_num_ops = chain.invoke({
-        "snippet_kernel_src_concretized_values": state["snippet_kernel_src_concretized_values"],
-        "snippet_first_kernel_invocation": state["snippet_first_kernel_invocation"],
-        "grid_size": state["grid_size"],
-        "block_size": state["block_size"], 
-        "total_num_threads": state["total_num_threads"],
-        #"step8_example_before": step8_example_before,
-        #"step8_example_after": step8_example_after,
-        "step8_examples": step8_examples,
-    }).content
+         ("system",
+          "You are a code checker that verifies the SP-FLOP and DP-FLOP floating point operation count annotations for a given C/C++ CUDA source code.\n" 
+          "Make sure that the returned code follows the rules of the original system message.\n"
+          "If the annotated code follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
+          "If the annotated fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the annotations are incorrect or what it may be missing.\n"
+          "The rejectReason should state all the possible reasons why the floating point operation counts may be incorrect."
+          "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
+          "Below are the rules that the annotations must follow:\n"
+          "{kernel_num_ops_rules}\n"
+          "Original system message and source code response messages are provided below.\n"
+          ),
+    ] + msg_histroy)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------")
-    print(f"\n{kernel_annotated_num_ops}\n")
-    print("---------- END STEP 8: Kernel Number of Operations Annotation ----------")
-    print("\n\n\n")
+    chain = prompt | num_ops_checker_llm 
 
-    return {"kernel_annotated_num_ops": kernel_annotated_num_ops}
+    resultState = chain.invoke({
+        "kernel_num_ops_rules": kernel_num_ops_rules,
+    })
+
+    return {"numOpsAnnotationState": resultState}
+
+
+def route_num_ops_annotation_status_edge(state: KernelAnalysisState):
+    return state.get("numOpsAnnotationState", {}).status
+
+
+
+
+
+
 
 
 

@@ -11,6 +11,7 @@ from langgraph.graph.message import add_messages
 # Part of step 7a, where we extract the warp divergence points from the annotated kernel source code
 class WarpDivergencePoint(BaseModel):
     classification: str = Field(..., description="Derived classification of the warp divergence point, which can be one of the following: 'for', 'if', 'else-if', 'while', 'do-while', 'ternary'. This classification is used to classify the type of warp divergence point.")
+
     source_code: str = Field(..., description="Extracted source code of the warp divergence point, including the conditional logic and necessary variables used in the warp divergence point entry logic. The source code should include the `// WARP DIVERGENCE POINT -- VARIABLES REASONING` comment.")
 
 
@@ -56,6 +57,18 @@ class SingleKernelState(BaseModel):
         description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
         )
 
+class NumOpsState(BaseModel):
+    """ A class used to structure the output of the num ops annotator checker node."""
+
+    status: Literal["ACCEPT", "REJECT"] = Field(
+        ..., 
+        description="The status of the FLOP operations count checker, which can be 'ACCEPT' or 'REJECT'. ACCEPT is given when the source code modifications correctly follow all the rules to annotate the source code with comments correctly indicating the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations on the lines where they occur. REJECT is given when the modifications do not follow the rules and the source code is NOT properly annotated with the correct SP-FLOP or DP-FLOP counts, or the source code has annotations that are incorrect/inaccurate."
+        )
+    rejectReason: str = Field(
+        ..., 
+        description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
+        )
+
 
 # Updated KernelAnalysisState using TypedDict with default values for optional fields
 class KernelAnalysisState(TypedDict, total=False):
@@ -81,11 +94,21 @@ class KernelAnalysisState(TypedDict, total=False):
 
     snippet_first_kernel_invocation: str
     snippet_kernel_src: str
+
     snippet_kernel_src_concretized_values: str
+    step5_messages: Annotated[List, add_messages]
+    snippetConcretizationState: ConcretizationChecker
+
     kernel_annotated_warp_divergence: str
+
+    # Source snippet annotated with the warp divergence points and their dependent variable value ranges
     kernel_annotated_WDPs: str
+
     wdps_list: List[WarpDivergencePoint]  # List of tuples with warp divergence point source code and classification
-    wdps_num_executions : List[int]
+    wdps_num_executions : List[int] # Corresponding number of executions for each warp divergence point
 
     kernel_annotated_num_ops: str
+    step8_messages: Annotated[List, add_messages]
+    numOpsAnnotationState: NumOpsState
+
     summed_kernel_ops: str

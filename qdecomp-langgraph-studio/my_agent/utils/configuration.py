@@ -10,11 +10,13 @@ llm_nodes = [
             "first_kernel_invocation_snippet_extractor_3", 
             "kernel_source_snippet_extractor_4", 
             "kernel_source_snippet_concretizer_5", 
+            "snippet_concretization_checker_5a",
             "kernel_warp_divergence_annotator_6", 
             "kernel_wdp_variables_annotator_7", 
             "wdp_list_extractor_7a", 
             "wdp_num_execution_calculations_7b", 
             "kernel_num_ops_annotator_8", 
+            "num_ops_checker_8a",
             "kernel_ops_summarizer_9"
 ]
 

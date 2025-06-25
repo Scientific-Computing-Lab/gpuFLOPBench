@@ -10,6 +10,12 @@ __global__ void float_double_examples_kernel(
     float* float_results, double* double_results
 ) {
 
+    // Do not annotate this line, it does not perform any floating-point operations
+    int xx = a / c + e;
+
+    // Do not annotate this line, it does not perform any floating-point operations
+    auto xx = c * a / f + e;
+
     // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
     //   - static_cast<float>(a): Converts an int to float.
@@ -158,8 +164,6 @@ __global__ void float_double_examples_kernel(
     //   - (i + s) promoted to double for addition with db (DP-FLOP: 1)
     //   - Addition in double (DP-FLOP: 1)
     double_results[6] = (i + s) + db;
-
-    // VARIATION EXAMPLES (double)
 
     // 2 DP-FLOP, 0 SP-FLOP
     // Explanation:

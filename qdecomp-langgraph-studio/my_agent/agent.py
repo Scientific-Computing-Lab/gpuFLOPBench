@@ -23,12 +23,18 @@ workflow.add_node("single_kernel_execution_checker_2a", single_kernel_execution_
 
 workflow.add_node("first_kernel_invocation_snippet_extractor_3", first_kernel_invocation_snippet_extractor)
 workflow.add_node("kernel_source_snippet_extractor_4", kernel_source_snippet_extractor)
+
 workflow.add_node("kernel_source_snippet_concretizer_5", kernel_source_snippet_concretizer)
+workflow.add_node("snippet_concretization_checker_5a", snippet_concretization_checker)
+
 workflow.add_node("kernel_warp_divergence_annotator_6", kernel_warp_divergence_annotator)
 workflow.add_node("kernel_wdp_variables_annotator_7", kernel_wdp_variables_annotator)
 workflow.add_node("wdp_list_extractor_7a", wdp_extractor)
 workflow.add_node("wdp_num_execution_calculations_7b", wdp_num_executions_calculations)
+
 workflow.add_node("kernel_num_ops_annotator_8", kernel_num_ops_annotator)
+workflow.add_node("num_ops_checker_8a", num_ops_checker)
+
 workflow.add_node("kernel_ops_summarizer_9", kernel_ops_summarizer)
 
 
@@ -64,17 +70,35 @@ workflow.add_edge([
     "first_kernel_invocation_snippet_extractor_3"
     ],  "kernel_source_snippet_concretizer_5")
 
-workflow.add_edge("kernel_source_snippet_concretizer_5", "kernel_warp_divergence_annotator_6")
+workflow.add_edge("kernel_source_snippet_concretizer_5", "snippet_concretization_checker_5a")
+
+workflow.add_conditional_edges(source="snippet_concretization_checker_5a", 
+                               path=route_snippet_concretization_status_edge,
+                               path_map={
+                                      "ACCEPT": "kernel_warp_divergence_annotator_6",
+                                      "REJECT": "kernel_source_snippet_concretizer_5"
+                               },)
+
+#workflow.add_edge("snippet_concretization_checker_5a", "kernel_warp_divergence_annotator_6")
 
 workflow.add_edge([
     "kernel_warp_divergence_annotator_6",
-    "kernel_source_snippet_concretizer_5"
+    #"snippet_concretization_checker_5a"
     ],  "kernel_wdp_variables_annotator_7")
+
 
 workflow.add_edge([
     "first_kernel_invocation_snippet_extractor_3",
-    "kernel_source_snippet_concretizer_5"
+    "kernel_warp_divergence_annotator_6"
     ],  "kernel_num_ops_annotator_8")
+
+workflow.add_edge("kernel_num_ops_annotator_8", "num_ops_checker_8a")
+workflow.add_conditional_edges(source="num_ops_checker_8a", 
+                               path=route_num_ops_annotation_status_edge,
+                               path_map={
+                                      "ACCEPT": "kernel_ops_summarizer_9",
+                                      "REJECT": "kernel_num_ops_annotator_8"
+                               },)
 
 workflow.add_edge("kernel_wdp_variables_annotator_7", "wdp_list_extractor_7a")
 
@@ -82,7 +106,7 @@ workflow.add_edge("wdp_list_extractor_7a", "wdp_num_execution_calculations_7b")
 
 workflow.add_edge([
     "wdp_num_execution_calculations_7b", 
-    "kernel_num_ops_annotator_8", 
+    #"kernel_num_ops_annotator_8", 
     "first_kernel_invocation_snippet_extractor_3"
     ], "kernel_ops_summarizer_9")
 
