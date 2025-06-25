@@ -36,13 +36,25 @@ class ConcretizationChecker(BaseModel):
 
     status: Literal["ACCEPT", "REJECT"] = Field(
         ..., 
-        description="The status of the concretization check, which can be 'ACCEPT' or 'REJECT'. Accept is given when the concretization follows all the rules and the source code is properly concretized. Reject is given when the concretization does not follow the rules and the source code is not properly concretized."
+        description="The status of the concretization check, which can be 'ACCEPT' or 'REJECT'. ACCEPT is given when the concretization follows all the rules and the source code is properly concretized. REJECT is given when the concretization does not follow the rules and the source code is not properly concretized."
         )
     rejectReason: str = Field(
         ..., 
         description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
         )
     
+
+class SingleKernelState(BaseModel):
+    """ A class used to structure the output of the single kernel source execution checker node."""
+
+    status: Literal["ACCEPT", "REJECT"] = Field(
+        ..., 
+        description="The status of the single kernel source execution check, which can be 'ACCEPT' or 'REJECT'. ACCEPT is given when the source code modifications follow all the rules to transform the source code to have a single target kernel exeuction. REJECT is given when the modifications do not follow the rules and the source code is not properly transformed."
+        )
+    rejectReason: str = Field(
+        ..., 
+        description="The brief reasoning behind a 'REJECT' status. Leave empty if the status is 'ACCEPT'."
+        )
 
 
 # Updated KernelAnalysisState using TypedDict with default values for optional fields
@@ -54,15 +66,19 @@ class KernelAnalysisState(TypedDict, total=False):
     block_size: str
     total_num_threads: str
 
+    # these will be filled in by the nodes
+
     # these are message logs used in retying the LLM calls with feedback
     # this add_messages ensures that when we return the state object dict, the messages are added to the messages list
+    src_concretized_input_args: str
     step1_messages: Annotated[List, add_messages]
     concretizationState: ConcretizationChecker  
 
 
-    # these will be filled in by the nodes
-    src_concretized_input_args: str
     src_single_kernel_execution: str
+    step2_messages: Annotated[List, add_messages]
+    srcSingleKernelState: SingleKernelState 
+
     snippet_first_kernel_invocation: str
     snippet_kernel_src: str
     snippet_kernel_src_concretized_values: str

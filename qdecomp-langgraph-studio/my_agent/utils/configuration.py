@@ -6,6 +6,7 @@ llm_nodes = [
             "src_input_args_concretizer_1", 
             "concretization_checker_1a",
             "src_single_kernel_execution_modifier_2", 
+            "single_kernel_execution_checker_2a",
             "first_kernel_invocation_snippet_extractor_3", 
             "kernel_source_snippet_extractor_4", 
             "kernel_source_snippet_concretizer_5", 
@@ -55,7 +56,8 @@ class Configuration(BaseModel):
         ],
         {"__template_metadata__": {"kind": "llm"}},
     ] = Field(
-        default="openai/o3-mini",
+        default="openai/gpt-4.1-mini",
+        #default="openai/o3-mini",
         description="The name of the language model to use for the agent's main interactions. "
         "Should be in the form: provider/model-name.",
         json_schema_extra={"langgraph_nodes": llm_nodes},

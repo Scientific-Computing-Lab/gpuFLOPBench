@@ -1,4 +1,4 @@
-from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker
+from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState
 
 from typing_extensions import TypedDict, List
 from pydantic import BaseModel, Field
@@ -99,22 +99,23 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
         chain = error_msg | llm.with_config(configurable=config.get("configurable", {}))
 
-        result = chain.invoke({
+        inputs = {
             "reason": concretizationState.rejectReason,
-        })
+        }
 
+        result = chain.invoke(inputs)
 
         updated_source = result.content
 
         return {"src_concretized_input_args": updated_source,
-            "step1_messages": [result]}
+                "step1_messages": error_msg.format_messages(**inputs) + [result]}
 
     # this is the default path to use -- we hope the LLM agrees
     else:
         prompt = ChatPromptTemplate.from_messages([
             ("system", 
              "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values.\n"
-             "Be sure to follow the following rules when transforming the source code:\n{concretization_rules}\n"
+             "Be sure to follow the following RULES when transforming the source code:\n{concretization_rules}\n"
              "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
              "{step1_example_before}\n\n"
              "{step1_example_after}\n\n"
@@ -152,11 +153,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
         #print("\n\n\n")
 
         return {"src_concretized_input_args": updated_source,
-            "step1_messages": prompt.format_messages(**inputs)+[result]}
-
-
-
-
+                "step1_messages": prompt.format_messages(**inputs) + [result]}
 
 
 
@@ -176,6 +173,7 @@ def concretization_checker(state: KernelAnalysisState, config):
           "Make sure that the returned concretized code follows the rules of the original system message.\n"
           "If the concretization follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
           "If the concretization fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the concretization is incorrect or what it may be missing.\n"
+          "The rejectReason should state all the possible reasons why the concretization may be incorrect."
           "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
           "Below are the rules that the concretization must follow:\n"
           "{concretization_rules}\n"
@@ -218,41 +216,110 @@ with open('./example_codes/step2_example_after.cu', 'r') as file:
 
 def src_single_kernel_execution_modifier(state: KernelAnalysisState, config): 
 
+    if len(state["step2_messages"]) != 0:
+        msg_history = state["step2_messages"]
+        singleKernelState = state["srcSingleKernelState"]
+
+        error_msg = ChatPromptTemplate.from_messages(msg_history + [
+             ("assistant",
+              "The single kernel source transformation was rejected with the following reason(s):\n{reason}\n"
+              "Please update the erroneous transformed source code with the necessary changes to make the concretization correct.\n")
+        ])
+
+        chain = error_msg | llm.with_config(configurable=config.get("configurable", {}))
+
+        inputs = {
+            "reason": singleKernelState.rejectReason,
+        }
+
+        result = chain.invoke(inputs)
+
+        updated_source = result.content
+
+        return {"src_single_kernel_execution": updated_source,
+                "step2_messages": error_msg.format_messages(**inputs) + [result]}
+    
+    else:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", 
+             "You are a code transformer that modifies the given C/C++ CUDA source code to ensure that only a single kernel invocation of the target kernel name is executed.\n"
+             "This means removing any loops or multiple invocations of the kernel, to leave only the first invocation of the target kernel in the code. This also means ensuring that the kernel is invoked with the correct arguments, grid, and block sizes.\n"
+             "The modifications should be done by commenting out parts of the original code to be changed, and adding the changes on a new line below the original commented code.\n"
+             "If an entire function ceases to be used or called due to commenting, omit that function from the transformed source code.\n"
+             "If more than one CUDA kernel appears in the source code, and if the target CUDA kernel does not depend on said other kernels, remove the other kernels and their invocations from the source code.\n"
+             "Only return the modified source code, nothing else.\nAn example is provided below:\n"
+             "Example Before:\n"
+             "{step2_example_before}\n\n"
+             "Example After:\n"
+             "{step2_example_after}\n\n"),
+            ("human", 
+             "Target Kernel Name: {kernel_name}\n"
+             "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
+             "Please return the updated source code with only a single kernel invocation."
+             "Source code:\n{updated_source}\n"
+             )
+        ])
+        chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
+        inputs = {
+            "updated_source": state["src_concretized_input_args"],
+            "kernel_name": state["kernel_name"],
+            "grid_size": state["grid_size"],
+            "block_size": state["block_size"], 
+            "total_num_threads": state["total_num_threads"], 
+            "step2_example_before": step2_example_before,
+            "step2_example_after": step2_example_after,
+        }
+
+        result = chain.invoke(inputs)
+
+        single_kernel_source = result.content
+
+        #print("\n\n\n")
+        #print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------")
+        #print(f"\n{single_kernel_source}\n")
+        #print("---------- END STEP 2: Single Kernel Execution Modification ----------")
+        #print("\n\n\n")
+
+        return {"src_single_kernel_execution": single_kernel_source, 
+                "step2_messages": prompt.format_messages(**inputs) + [result]}
+
+
+
+
+
+def single_kernel_execution_checker(state: KernelAnalysisState, config):
+
+    single_source_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(SingleKernelState)
+
+    msg_histroy = state["step2_messages"]
+
+    # this node is used to check how well the single kernel source modifications worked
     prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a code transformer that modifies the given C/C++ CUDA source code to ensure that only a single kernel invocation of the target kernel name is executed. "
-         "This means removing any loops or multiple invocations of the kernel, to leave only the first invocation of the target kernel in the code. This also means ensuring that the kernel is invoked with the correct arguments, grid, and block sizes."
-         "The modifications should be done by commenting out parts of the original code to be changed, and adding the changes on a new line below the original commented code."
-         "Only return the modified source code, nothing else.\nAn example is provided below:\n"
-         "Example Before:\n"
-         "{step2_example_before}\n\n"
-         "Example After:\n"
-         "{step2_example_after}\n\n"),
-        ("human", 
-         "Target Kernel Name: {kernel_name}\n"
-         "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-         "Please return the updated source code with only a single kernel invocation."
-         "Source code:\n{updated_source}\n"
-         )
-    ])
-    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    single_kernel_source = chain.invoke({
-        "updated_source": state["src_concretized_input_args"],
-        "kernel_name": state["kernel_name"],
-        "grid_size": state["grid_size"],
-        "block_size": state["block_size"], 
-        "total_num_threads": state["total_num_threads"], 
-        "step2_example_before": step2_example_before,
-        "step2_example_after": step2_example_after,
-    }).content
+         ("system",
+          "You are a code checker that verifies the correct modification of the given C/C++ CUDA source code.\n" 
+          "The resulting source code should only contain a single invocation of the target kernel name, with the correct grid and block sizes, and no other kernels or loops that invoke the target kernel multiple times.\n"
+          "Make sure that the returned source code follows the rules of the original system message.\n"
+          "If the transformed code follows all the rules, it is correct, and you should return the ACCEPT status tool call.\n"
+          "If the transformed code fails to follow at least one rule, it is incorrect, and you should return the REJECT status tool call with a brief rejectReason explaining why the transformation is incorrect or what it may be missing.\n"
+          "Be sure to check that the produced code follows ALL the rules of the original system message. Failure to do so should result in a REJECT status.\n"
+          "Original system message and transformed source code response messages are provided below.\n"
+          ),
+    ] + msg_histroy)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------")
-    print(f"\n{single_kernel_source}\n")
-    print("---------- END STEP 2: Single Kernel Execution Modification ----------")
-    print("\n\n\n")
+    chain = prompt | single_source_checker_llm 
 
-    return {"src_single_kernel_execution": single_kernel_source}
+    resultState = chain.invoke({})
+
+    return {"srcSingleKernelState": resultState}
+
+
+def route_single_kernel_source_status_edge(state: KernelAnalysisState):
+    return state.get("srcSingleKernelState", {}).status
+
+
+
+
+
 
 
 

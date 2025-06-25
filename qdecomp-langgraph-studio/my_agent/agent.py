@@ -14,10 +14,13 @@ from langgraph.graph import StateGraph, END
 workflow = StateGraph(KernelAnalysisState, config_schema=Configuration)
 
 workflow.add_node("get_input_problem_0", get_input_problem)
+
 workflow.add_node("src_input_args_concretizer_1", src_input_args_concretizer)
 workflow.add_node("concretization_checker_1a", concretization_checker)
 
 workflow.add_node("src_single_kernel_execution_modifier_2", src_single_kernel_execution_modifier)
+workflow.add_node("single_kernel_execution_checker_2a", single_kernel_execution_checker)
+
 workflow.add_node("first_kernel_invocation_snippet_extractor_3", first_kernel_invocation_snippet_extractor)
 workflow.add_node("kernel_source_snippet_extractor_4", kernel_source_snippet_extractor)
 workflow.add_node("kernel_source_snippet_concretizer_5", kernel_source_snippet_concretizer)
@@ -43,7 +46,16 @@ workflow.add_conditional_edges(source="concretization_checker_1a",
 
 #workflow.add_edge("src_input_args_concretizer_1", "src_single_kernel_execution_modifier_2")
 
-workflow.add_edge("src_single_kernel_execution_modifier_2", "first_kernel_invocation_snippet_extractor_3")
+#workflow.add_edge("src_single_kernel_execution_modifier_2", "first_kernel_invocation_snippet_extractor_3")
+
+workflow.add_edge("src_single_kernel_execution_modifier_2", "single_kernel_execution_checker_2a")
+
+workflow.add_conditional_edges(source="single_kernel_execution_checker_2a", 
+                               path=route_single_kernel_source_status_edge,
+                               path_map={
+                                      "ACCEPT": "first_kernel_invocation_snippet_extractor_3",
+                                      "REJECT": "src_single_kernel_execution_modifier_2"
+                               },)
 
 workflow.add_edge("first_kernel_invocation_snippet_extractor_3", "kernel_source_snippet_extractor_4")
 
