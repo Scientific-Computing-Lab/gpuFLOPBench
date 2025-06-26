@@ -27,7 +27,7 @@ class Rewriter:
         return src
 
 # -------------------------------------------------------------------
-# Walk the AST to gather argv uses and simple constant propagations
+# AST traversal for initial argv and variable value collection and replacement
 # -------------------------------------------------------------------
 def collect_and_rewrite(tree, source_bytes, argv_values, rewriter):
     var_map = {}
@@ -39,24 +39,47 @@ def collect_and_rewrite(tree, source_bytes, argv_values, rewriter):
     def traverse(n):
         # 1) Replace argv[N] with literal
         if n.type == 'subscript_expression':
-            print('\n\t found a subscript expression:', node_text(n))
             c0, c1 = n.children[0], n.children[1]
-            print(c0.type, c1.type)
             if c0.type == 'identifier' and node_text(c0) == 'argv' \
                and c1.type == 'subscript_argument_list':
-                idx_node = c1.children[1]
-                if idx_node.type == 'number_literal':
-                    idx = int(node_text(idx_node))
-                    if idx < len(argv_values):
-                        lit = argv_values[idx]
-                        cpp_lit = '"' + lit.replace('"', '\\"') + '"'
-                        rewriter.replace(n.start_byte, n.end_byte, cpp_lit)
-                        return
+                if len(c1.children) > 1:
+                    idx_node = c1.children[1]
+                    if idx_node.type == 'number_literal':
+                        idx = int(node_text(idx_node))
+                        if idx < len(argv_values):
+                            lit = argv_values[idx]
+                            cpp_lit = '"' + lit.replace('"', '\\"') + '"'
+                            rewriter.replace(n.start_byte, n.end_byte, cpp_lit)
+                            return
+
+        # 1a) Replace atoi(argv[N]) with integer literal (if possible)
+        if n.type == 'call_expression':
+            if len(n.children) >= 2:
+                call_ident = n.children[0]
+                arglist = n.children[1]
+                if call_ident.type == 'identifier' and node_text(call_ident) == 'atoi':
+                    # Find the argument node, look for argv[N]
+                    for arg in arglist.named_children:
+                        if arg.type == 'subscript_expression':
+                            c0, c1 = arg.children[0], arg.children[1]
+                            if c0.type == 'identifier' and node_text(c0) == 'argv' \
+                               and c1.type == 'subscript_argument_list':
+                                if len(c1.children) > 1:
+                                    idx_node = c1.children[1]
+                                    if idx_node.type == 'number_literal':
+                                        idx = int(node_text(idx_node))
+                                        if idx < len(argv_values):
+                                            lit = argv_values[idx]
+                                            try:
+                                                int_lit = str(int(lit))
+                                            except Exception:
+                                                int_lit = '0'
+                                            rewriter.replace(n.start_byte, n.end_byte, int_lit)
+                                            return
 
         # 2) Track simple assignments or declarations:
         #    var = "literal";   var = other_var;
         if n.type in ('variable_declaration', 'assignment_expression'):
-            # find identifier and RHS
             id_node = None
             eq_idx = None
             for i, c in enumerate(n.children):
@@ -76,23 +99,39 @@ def collect_and_rewrite(tree, source_bytes, argv_values, rewriter):
                 # RHS is an identifier we already know
                 elif rhs.type == 'identifier' and rhs_txt in var_map:
                     var_map[node_text(id_node)] = var_map[rhs_txt]
-                    # replace RHS identifier with literal
                     start, end = rhs.start_byte, rhs.end_byte
                     rewriter.replace(start, end, var_map[rhs_txt])
-
-        # 3) Propagate known vars into expressions and function calls
-        if n.type in ('call_expression', 'binary_expression', 'argument_list'):
-            for c in n.children:
-                if c.type == 'identifier':
-                    name = node_text(c)
-                    if name in var_map:
-                        rewriter.replace(c.start_byte, c.end_byte, var_map[name])
 
         for c in n.children:
             traverse(c)
 
     traverse(cursor.node)
     return var_map
+
+# -------------------------------------------------------------------
+# Propagate hard-coded values into function call argument_list
+# -------------------------------------------------------------------
+def propagate_literals_to_calls(tree, source_bytes, var_map, rewriter):
+    def node_text(n):
+        return source_bytes[n.start_byte:n.end_byte].decode('utf8')
+
+    def traverse(n):
+        if n.type == 'call_expression':
+            # Find argument_list node (tree-sitter-cpp or cuda: may be named 'argument_list')
+            for child in n.children:
+                if child.type == 'argument_list':
+                    for arg in child.named_children:
+                        # If argument is an identifier and its value is a hard-coded literal,
+                        # replace it in the source with the literal.
+                        if arg.type == 'identifier':
+                            name = node_text(arg)
+                            if name in var_map:
+                                value = var_map[name]
+                                rewriter.replace(arg.start_byte, arg.end_byte, value)
+        for c in n.children:
+            traverse(c)
+
+    traverse(tree.root_node)
 
 # -------------------------------------------------------------------
 # Split and re-combine multi-file string format
@@ -127,27 +166,27 @@ def render_combined_sources(sources: dict) -> str:
 # Perform iterative rewriting until no more changes
 # -------------------------------------------------------------------
 def rewrite_until_fixed(src: str, argv: list) -> str:
-    current = bytes(src, 'utf8')
+    src_bytes = bytes(src, 'utf8')
     while True:
-        rewriter = Rewriter(current)
-        tree = parser.parse(current)
-        collect_and_rewrite(tree, current, argv, rewriter)
+        rewriter = Rewriter(src_bytes)
+        tree = parser.parse(src_bytes)
+        var_map = collect_and_rewrite(tree, src_bytes, argv, rewriter)
+        # After collecting, propagate hard-coded variables to call argument_lists
+        propagate_literals_to_calls(tree, src_bytes, var_map, rewriter)
         updated = rewriter.finish()
-        if updated == current:
-            return current.decode('utf8')
-        current = updated
+        if updated == src_bytes:
+            return src_bytes.decode('utf8')
+        src_bytes = updated
 
 # -------------------------------------------------------------------
 # Main propagation over combined multi-file string
 # -------------------------------------------------------------------
 def propagate_argv_in_combined(combined: str, argv: list) -> str:
     srcs = parse_combined_sources(combined)
-
     new_srcs = {}
     for fname, src in srcs.items():
         new_srcs[fname] = rewrite_until_fixed(src, argv)
     return render_combined_sources(new_srcs)
-
 
 # -------------------------------------------------------------------
 # Example usage
