@@ -10,6 +10,8 @@ from langchain_core.runnables import ConfigurableField
 
 from .dataset import df
 
+from utils.preprocessor import *
+
 # The ids of the configurables are from the Configuration class in configuration.py
 # This is needed to allow us to change the variables at runtime
 llm = ChatOpenAI(
@@ -55,6 +57,14 @@ def get_input_problem(state: KernelAnalysisState, config):
 
     assert row is not None, f"Target problem '{target_name}' not found in the dataset."
 
+    exeArgs_list = [f"./{target_name}"] + row['exeArgs'].split(' ')
+    propagated = propagate_argv_in_combined(row['kernelCode'], exeArgs_list)
+
+    print(exeArgs_list)
+    print("---------- BEGIN STEP 0: Input ARGV Propagation ----------")
+    print(propagated)
+    print("---------- END STEP 0: Input ARGV Propagation ----------")
+
     return {'source_code' : row['kernelCode'],
             'kernel_name' : row['Kernel Name'],
             'exec_args' : row['exeArgs'],
@@ -65,6 +75,7 @@ def get_input_problem(state: KernelAnalysisState, config):
             # they are used to calculate how close the LLM prediction is to the ground-truth
             'empirical_sp_flop_count' : row['spPerf']*(1e3*row['xtime']),
             'empirical_dp_flop_count' : row['dpPerf']*(1e3*row['xtime']),
+            "treesitter_propagated_source_code": propagated,
             }
 
 

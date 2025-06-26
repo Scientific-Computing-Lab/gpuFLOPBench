@@ -108,6 +108,7 @@ class KernelAnalysisState(TypedDict, total=False):
     total_num_threads: str
     empirical_sp_flop_count: float
     empirical_dp_flop_count: float
+    treesitter_propagated_source_code: str
 
     # these will be filled in by the nodes
 
