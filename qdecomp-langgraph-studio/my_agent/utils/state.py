@@ -106,8 +106,8 @@ class KernelAnalysisState(TypedDict, total=False):
     grid_size: str
     block_size: str
     total_num_threads: str
-    empirical_sp_flop_count: int
-    empirical_dp_flop_count: int
+    empirical_sp_flop_count: float
+    empirical_dp_flop_count: float
 
     # these will be filled in by the nodes
 

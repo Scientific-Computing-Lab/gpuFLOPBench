@@ -1061,12 +1061,18 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
     print("---------- END STEP 9: Kernel Operations Summary ----------")
     print("\n\n\n")
 
-    empirical_sp_flop_count = state.get("empirical_sp_flop_count", 0)
-    empirical_dp_flop_count = state.get("empirical_dp_flop_count", 0)
+    empirical_sp_flop_count = state["empirical_sp_flop_count"]
+    empirical_dp_flop_count = state["empirical_dp_flop_count"]
+
+    sp_flop_diff = summed_kernel_ops.sp_flop_count - empirical_sp_flop_count
+    dp_flop_diff = summed_kernel_ops.dp_flop_count - empirical_dp_flop_count
+
+    sp_flop_perc_diff = ((sp_flop_diff * 100) / empirical_sp_flop_count) if empirical_sp_flop_count != 0 else 0
+    dp_flop_perc_diff = ((dp_flop_diff * 100) / empirical_dp_flop_count) if empirical_dp_flop_count != 0 else 0
 
     return {"summed_kernel_ops": summed_kernel_ops,
-            "sp_flop_diff": summed_kernel_ops.sp_flop_count - empirical_sp_flop_count,
-            "sp_flop_perc_diff": ((summed_kernel_ops.sp_flop_count - empirical_sp_flop_count) * 100 / empirical_sp_flop_count) if empirical_sp_flop_count != 0 else 0,
-            "dp_flop_diff": summed_kernel_ops.dp_flop_count - empirical_dp_flop_count,
-            "dp_flop_perc_diff": ((summed_kernel_ops.dp_flop_count - empirical_dp_flop_count) * 100 / empirical_dp_flop_count) if empirical_dp_flop_count != 0 else 0,
+            "sp_flop_diff": sp_flop_diff,
+            "dp_flop_diff": dp_flop_diff,
+            "sp_flop_perc_diff": sp_flop_perc_diff,
+            "dp_flop_perc_diff": dp_flop_perc_diff,
             }
