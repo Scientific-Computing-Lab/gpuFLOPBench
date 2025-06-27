@@ -10,7 +10,9 @@ from langchain_core.runnables import ConfigurableField
 
 from .dataset import df
 
-from utils.preprocessor import *
+from utils.preprocessing.args_propagator import *
+from utils.preprocessing.source_reorganizer import *
+from utils.preprocessing.prune_irrelevant_code import *
 
 # The ids of the configurables are from the Configuration class in configuration.py
 # This is needed to allow us to change the variables at runtime
@@ -58,7 +60,12 @@ def get_input_problem(state: KernelAnalysisState, config):
     assert row is not None, f"Target problem '{target_name}' not found in the dataset."
 
     exeArgs_list = [f"./{target_name}"] + row['exeArgs'].split(' ')
-    propagated = propagate_argv_in_combined(row['kernelCode'], exeArgs_list)
+
+    reorganized_source = reorganize_source(row['kernelCode'])
+    #pruned_source = render_combined_sources(prune_sources(reorganized_source, row['Kernel Name']))
+    #graph = build_dependency_graph(reorganized_source)
+    #graph.render('parsed_graph', cleanup=True)
+    propagated = propagate_argv_in_combined(reorganized_source, exeArgs_list)
 
     print(exeArgs_list)
     print("---------- BEGIN STEP 0: Input ARGV Propagation ----------")
