@@ -14,6 +14,8 @@ from utils.preprocessing.args_propagator import *
 from utils.preprocessing.source_reorganizer import *
 from utils.preprocessing.prune_irrelevant_code import *
 
+import os
+
 # The ids of the configurables are from the Configuration class in configuration.py
 # This is needed to allow us to change the variables at runtime
 llm = ChatOpenAI(
@@ -62,6 +64,11 @@ def get_input_problem(state: KernelAnalysisState, config):
     exeArgs_list = [f"./{target_name}"] + row['exeArgs'].split(' ')
 
     reorganized_source = reorganize_source(row['kernelCode'])
+
+    # print the current working directory
+    #with open(f'./real_codes/{target_name}.cu', 'w') as file:
+    #    file.write(reorganized_source)
+
     #pruned_source = render_combined_sources(prune_sources(reorganized_source, row['Kernel Name']))
     #graph = build_dependency_graph(reorganized_source)
     #graph.render('parsed_graph', cleanup=True)
@@ -72,7 +79,7 @@ def get_input_problem(state: KernelAnalysisState, config):
     print(propagated)
     print("---------- END STEP 0: Input ARGV Propagation ----------")
 
-    return {'source_code' : row['kernelCode'],
+    return {'source_code' : reorganized_source, #row['kernelCode'],
             'kernel_name' : row['Kernel Name'],
             'exec_args' : row['exeArgs'],
             'grid_size' : row['Grid Size'],

@@ -11,184 +11,193 @@ __global__ void float_double_examples_kernel(
 ) {
 
     // Do not annotate this line, it does not perform any floating-point operations
+    // as all of its operands are integers
     int xx = a / c + e;
 
     // Do not annotate this line, it does not perform any floating-point operations
-    auto xx = c * a / f + e;
+    // as all of its operands turn out to be integers
+    auto xx2 = c * a / f + e;
+
+    // --- float examples ---
 
     // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
-    //   - static_cast<float>(a): Converts an int to float.
-    //   - SP-FLOP: 1 (conversion to float)
+    //   - static_cast<float>(a): Converts an int to float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - "+=" is 1 FADD operation
+    //   - SP-FLOP: 1 
     //   - DP-FLOP: 0 (no double-precision)
-    float_results[0] = static_cast<float>(a);
+    float_results[0] += static_cast<float>(a);
 
     // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
-    //   - static_cast<float>(b): Converts a double to float.
-    //   - SP-FLOP: 1 (conversion to float)
-    //   - DP-FLOP: 0 (the double value is just stored, conversion is to float)
-    float_results[1] = static_cast<float>(b);
+    //   - static_cast<float>(): Converts an int to float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - "+ (float) 4": Promotes integer "a" to float and adds 4 to it via 1 FADD operation
+    //   - SP-FLOP: 1
+    //   - DP-FLOP: 0 (no double-precision)
+    float_results[1] = static_cast<float>(a + (float)4);
 
     // 2 SP-FLOP, 0 DP-FLOP
     // Explanation:
-    //   - c + fc: c (int) promoted to float (SP-FLOP: 1)
-    //   - Addition in float (SP-FLOP: 1)
+    //   - static_cast<float>(): Converts an int to float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - "+ (float) 4": Promotes integer "a" to float and adds 4 to it via 1 FADD operation
+    //   - "+=" writes the final result to the output array with another FADD operation
+    //   - SP-FLOP: 2
     //   - DP-FLOP: 0 (no double-precision)
-    float_results[2] = c + fc;
-
-    // 1 SP-FLOP, 2 DP-FLOP
-    // Explanation:
-    //   - d + e: e (int) promoted to double (DP-FLOP: 1)
-    //   - Addition in double (DP-FLOP: 1)
-    //   - Result converted from double to float (SP-FLOP: 1)
-    float_results[3] = static_cast<float>(d + e);
-
-    // 1 SP-FLOP, 4 DP-FLOP
-    // Explanation:
-    //   - f + g: f (int) promoted to double (DP-FLOP: 1)
-    //   - h (float) promoted to double for addition (DP-FLOP: 1)
-    //   - Two additions in double (DP-FLOP: 2)
-    //   - Final result converted from double to float (SP-FLOP: 1)
-    float_results[4] = static_cast<float>(f + g + h);
+    float_results[2] += static_cast<float>(a + (float)4);
 
     // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
-    //   - static_cast<float>(ch): char (via int) is converted to float.
-    //   - SP-FLOP: 1 (conversion to float)
+    //   - "a + 4": Performs an integer addition 
+    //   - static_cast<float>(): Converts the addition result to a float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - "+=" writes the final result to the output array with 1 FADD operation
+    //   - SP-FLOP: 1
     //   - DP-FLOP: 0 (no double-precision)
-    float_results[5] = static_cast<float>(ch);
+    float_results[3] += static_cast<float>(a + 4);
 
     // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
-    //   - static_cast<float>(ull): unsigned long long is converted to float.
-    //   - SP-FLOP: 1 (conversion to float)
+    //   - "a + 4": Performs an integer addition 
+    //   - static_cast<float>(): Converts the addition result to a float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - "*=" writes the final result to the output array with 1 FMUL operation
+    //   - SP-FLOP: 1
     //   - DP-FLOP: 0 (no double-precision)
-    float_results[6] = static_cast<float>(ull);
+    float_results[4] *= static_cast<float>(a + 4);
 
-    // 2 SP-FLOP, 2 DP-FLOP
+    // 0 SP-FLOP, 1 DP-FLOP
     // Explanation:
-    //   - i + s: s (short) promoted to int (not a FP op)
-    //   - (i + s) promoted to double for addition with db (DP-FLOP: 1)
-    //   - Addition in double (DP-FLOP: 1)
-    //   - Result converted to float (SP-FLOP: 1)
-    //   - Addition with fl (float) (SP-FLOP: 1)
-    float_results[7] = static_cast<float>((i + s) + db) + fl;
-
-    // 2 SP-FLOP, 0 DP-FLOP
-    // Explanation:
-    //   - c * fc: c (int) promoted to float (SP-FLOP: 1)
-    //   - Multiplication in float (SP-FLOP: 1)
-    float_results[8] = c * fc;
-
-    // 2 SP-FLOP, 0 DP-FLOP
-    // Explanation:
-    //   - fc - c: c (int) promoted to float (SP-FLOP: 1)
-    //   - Subtraction in float (SP-FLOP: 1)
-    float_results[9] = fc - c;
-
-    // 2 SP-FLOP, 0 DP-FLOP
-    // Explanation:
-    //   - fc / c: c (int) promoted to float (SP-FLOP: 1)
-    //   - Division in float (SP-FLOP: 1)
-    float_results[10] = fc / c;
-
-    // 1 SP-FLOP, 2 DP-FLOP
-    // Explanation:
-    //   - d / e: e (int) promoted to double (DP-FLOP: 1)
-    //   - Division in double (DP-FLOP: 1)
-    //   - Result converted from double to float (SP-FLOP: 1)
-    float_results[11] = static_cast<float>(d / e);
-
-    // 1 SP-FLOP, 2 DP-FLOP
-    // Explanation:
-    //   - d - e: e (int) promoted to double (DP-FLOP: 1)
-    //   - Subtraction in double (DP-FLOP: 1)
-    //   - Result converted from double to float (SP-FLOP: 1)
-    float_results[12] = static_cast<float>(d - e);
-
-    // 1 SP-FLOP, 2 DP-FLOP
-    // Explanation:
-    //   - d * e: e (int) promoted to double (DP-FLOP: 1)
-    //   - Multiplication in double (DP-FLOP: 1)
-    //   - Result converted from double to float (SP-FLOP: 1)
-    float_results[13] = static_cast<float>(d * e);
-
-    // 3 SP-FLOP, 0 DP-FLOP
-    // Explanation:
-    //   - fmaf(fc, float(c), h): c (int) promoted to float (SP-FLOP: 1, for promotion)
-    //   - Fused multiply-add in float (fmaf, SP-FLOP: 2; counted as two operations: one multiply, one add)
-    //   - DP-FLOP: 0 (no double-precision)
-    float_results[14] = fmaf(fc, static_cast<float>(c), h);
-
-    // 1 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - static_cast<double>(a): Converts int to double.
-    //   - DP-FLOP: 1 (conversion to double)
+    //   - d + e: e (int) promoted to double 
+    //   - Addition in double is 1 DADD operation
+    //   - Result converted from double to float does not use any FADD, FMUL, or FFMA operations  
     //   - SP-FLOP: 0 (no single-precision)
-    double_results[0] = static_cast<double>(a);
+    //   - DP-FLOP: 1 
+    float_results[5] = static_cast<float>(d + e);
 
-    // 1 DP-FLOP, 0 SP-FLOP
+    // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
-    //   - static_cast<double>(fc): Converts float to double.
-    //   - DP-FLOP: 1 (conversion to double)
+    //   - c + fc: c (int) promoted to float (no FADD, FMUL, or FFMA operation)
+    //   - Addition in float is 1 FADD operation
+    //   - SP-FLOP: 1 
+    //   - DP-FLOP: 0 (no double-precision)
+    float_results[6] = c + fc;
+
+    // 0 SP-FLOP, 2 DP-FLOP
+    // Explanation:
+    //   - c (int) promoted to double (no DADD, DMUL, or DFMA operations)
+    //   - fc is promoted to double (no DADD, DMUL, or DFMA operations)
+    //   - Compiler uses 1 DFMA operation for "c * d + fc"
+    //   - DFMA counts as 2 operations: 1 DMUL and 1 DADD
+    //   - Convert double result of "c * d + fc" to float (no FADD, FMUL, or FFMA operations)
     //   - SP-FLOP: 0 (no single-precision)
-    double_results[1] = static_cast<double>(fc);
+    //   - DP-FLOP: 2
+    float_results[7] = c * d + fc;
 
-    // 2 DP-FLOP, 0 SP-FLOP
+    // 0 SP-FLOP, 2 DP-FLOP
     // Explanation:
-    //   - c + d: c (int) promoted to double (DP-FLOP: 1)
-    //   - Addition in double (DP-FLOP: 1)
-    double_results[2] = c + d;
-
-    // 3 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - e + b: e (int) promoted to double (DP-FLOP: 1)
-    //   - fc (float) promoted to double for addition (DP-FLOP: 1)
-    //   - Two additions in double (DP-FLOP: 2)
-    double_results[3] = e + b + static_cast<double>(fc);
-
-    // 1 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - static_cast<double>(ch): char (via int) to double.
-    double_results[4] = static_cast<double>(ch);
-
-    // 1 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - static_cast<double>(ull): unsigned long long to double.
-    double_results[5] = static_cast<double>(ull);
-
-    // 2 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - (i + s): s (short) promoted to int (not a FP op)
-    //   - (i + s) promoted to double for addition with db (DP-FLOP: 1)
-    //   - Addition in double (DP-FLOP: 1)
-    double_results[6] = (i + s) + db;
-
-    // 2 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - c * d: c (int) promoted to double (DP-FLOP: 1)
-    //   - Multiplication in double (DP-FLOP: 1)
-    double_results[7] = c * d;
-
-    // 2 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - d - c: c (int) promoted to double (DP-FLOP: 1)
-    //   - Subtraction in double (DP-FLOP: 1)
-    double_results[8] = d - c;
-
-    // 2 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - d / c: c (int) promoted to double (DP-FLOP: 1)
-    //   - Division in double (DP-FLOP: 1)
-    double_results[9] = d / c;
-
-    // 3 DP-FLOP, 0 SP-FLOP
-    // Explanation:
-    //   - fma(d, double(e), g): e (int) promoted to double (DP-FLOP: 1, for promotion)
-    //   - Fused multiply-add in double (fma, DP-FLOP: 2; counted as two operations: one multiply, one add)
+    //   - static_cast<float>(): Converts an int to float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - f (int) promoted to double (no DADD, DMUL, or DFMA operations)
+    //   - h (float) promoted to double (no DADD, DMUL, or DFMA operations)
+    //   - Compiler uses 2 DADD operations for "f + g + h"
     //   - SP-FLOP: 0 (no single-precision)
-    double_results[10] = fma(d, static_cast<double>(e), g);
+    //   - DP-FLOP: 2
+    float_results[8] = static_cast<float>(f + g + h);
+
+    // 0 SP-FLOP, 3 DP-FLOP
+    // Explanation:
+    //   - static_cast<float>(): Converts an int to float, this does not involve any FADD, FMUL, or FFMA operation
+    //   - f (int) promoted to double (no DADD, DMUL, or DFMA operations)
+    //   - h (float) promoted to double (no DADD, DMUL, or DFMA operations)
+    //   - Compiler uses 2 DADD operations for "f + g + h"
+    //   - "+=" is done by promoting the result to a double, then using 1 DADD operation to update the result, and then converting the result back to float
+    //   - SP-FLOP: 0 (no single-precision)
+    //   - DP-FLOP: 3
+    float_results[9] += static_cast<float>(f + g + h);
+
+    // --- double examples (mirror float above) ---
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //   - static_cast<double>(a): Converts int to double (no DADD/DMUL/DFMA)
+    //   - "+=" is 1 DADD operation
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 1
+    double_results[0] += static_cast<double>(a);
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //   - static_cast<double>(): Converts int to double (no DADD/DMUL/DFMA)
+    //   - "+ (double)4": Promotes 4 to double and adds it via 1 DADD operation
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 1
+    double_results[1] = static_cast<double>(a + (double)4);
+
+    // 0 SP-FLOP, 2 DP-FLOP
+    // Explanation:
+    //   - static_cast<double>(): Converts int to double (no DADD/DMUL/DFMA)
+    //   - "+ (double)4": 1 DADD for inner addition
+    //   - "+=" writes final result with another DADD
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 2
+    double_results[2] += static_cast<double>(a + (double)4);
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //   - "a + 4": Integer addition (no FP ops)
+    //   - static_cast<double>(): Converts to double (no DADD/DMUL/DFMA)
+    //   - "+=" uses 1 DADD
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 1
+    double_results[3] += static_cast<double>(a + 4);
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //   - "a + 4": Integer addition (no FP ops)
+    //   - static_cast<double>(): Converts to double (no DADD/DMUL/DFMA)
+    //   - "*=" uses 1 DMUL
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 1
+    double_results[4] *= static_cast<double>(a + 4);
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //   - d + e: e promoted to double
+    //   - 1 DADD operation
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 1
+    double_results[5] = d + e;
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //   - c + d: c promoted to double (no FP convert op count)
+    //   - 1 DADD operation
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 1
+    double_results[6] = c + d;
+
+    // 0 SP-FLOP, 2 DP-FLOP
+    // Explanation:
+    //   - c promoted to double, fc promoted to double (no counted ops)
+    //   - Compiler uses 1 DFMA for "c * d + fc"
+    //   - DFMA counts as DMUL + DADD = 2 DP-FLOPs
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 2
+    double_results[7] = c * d + fc;
+
+    // 0 SP-FLOP, 2 DP-FLOP
+    // Explanation:
+    //   - f promoted to double, h promoted to double (no counted ops)
+    //   - Compiler uses 2 DADD operations for "f + g + h"
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 2
+    double_results[8] = f + g + h;
+
+    // 0 SP-FLOP, 3 DP-FLOP
+    // Explanation:
+    //   - f promoted to double, h promoted to double (no counted ops)
+    //   - 2 DADDs for "f + g + h"
+    //   - "+=" uses 1 more DADD to update the stored value
+    //   - SP-FLOP: 0
+    //   - DP-FLOP: 3
+    double_results[9] += f + g + h;
 }
 
 int main() {
@@ -232,35 +241,6 @@ int main() {
 
     cudaFree(d_float_results);
     cudaFree(d_double_results);
-
-    std::cout << std::fixed << std::setprecision(6);
-    std::cout << "int to float: " << h_float_results[0] << std::endl;
-    std::cout << "double to float: " << h_float_results[1] << std::endl;
-    std::cout << "int + float: " << h_float_results[2] << std::endl;
-    std::cout << "double + int, converted to float: " << h_float_results[3] << std::endl;
-    std::cout << "int + double + float, result as float: " << h_float_results[4] << std::endl;
-    std::cout << "char to float: " << h_float_results[5] << std::endl;
-    std::cout << "unsigned long long to float: " << h_float_results[6] << std::endl;
-    std::cout << "short + int + double, result to float, then add float: " << h_float_results[7] << std::endl;
-    std::cout << "int * float: " << h_float_results[8] << std::endl;
-    std::cout << "float - int: " << h_float_results[9] << std::endl;
-    std::cout << "float / int: " << h_float_results[10] << std::endl;
-    std::cout << "double / int, converted to float: " << h_float_results[11] << std::endl;
-    std::cout << "double - int, converted to float: " << h_float_results[12] << std::endl;
-    std::cout << "double * int, converted to float: " << h_float_results[13] << std::endl;
-    std::cout << "fmaf(float, float, float) [counts as 2 SP-FLOP + 1 SP-FLOP for promotion = 3]: " << h_float_results[14] << std::endl;
-
-    std::cout << "int to double: " << h_double_results[0] << std::endl;
-    std::cout << "float to double: " << h_double_results[1] << std::endl;
-    std::cout << "int + double: " << h_double_results[2] << std::endl;
-    std::cout << "int + double + float(as double): " << h_double_results[3] << std::endl;
-    std::cout << "char to double: " << h_double_results[4] << std::endl;
-    std::cout << "unsigned long long to double: " << h_double_results[5] << std::endl;
-    std::cout << "short + int + double: " << h_double_results[6] << std::endl;
-    std::cout << "int * double: " << h_double_results[7] << std::endl;
-    std::cout << "double - int: " << h_double_results[8] << std::endl;
-    std::cout << "double / int: " << h_double_results[9] << std::endl;
-    std::cout << "fma(double, double, double) [counts as 2 DP-FLOP + 1 DP-FLOP for promotion = 3]: " << h_double_results[10] << std::endl;
 
     return 0;
 }

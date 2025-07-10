@@ -108,7 +108,7 @@ workflow.add_edge("wdp_list_extractor_7a", "wdp_num_execution_calculations_7b")
 workflow.add_edge([
     "wdp_num_execution_calculations_7b", 
     #"kernel_num_ops_annotator_8", 
-    "first_kernel_invocation_snippet_extractor_3"
+    #"first_kernel_invocation_snippet_extractor_3"
     ], "kernel_ops_summarizer_9")
 
 workflow.add_edge("kernel_ops_summarizer_9", END)

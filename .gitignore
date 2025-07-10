@@ -48,3 +48,4 @@ analysis/offload
 */__pycache__
 */.langgraph_api
 *.env
+qdecomp-langgraph-studio/real_codes/*
