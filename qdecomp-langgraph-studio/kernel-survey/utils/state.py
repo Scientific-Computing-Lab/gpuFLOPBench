@@ -4,12 +4,7 @@ from langchain_openai import ChatOpenAI
 
 from langgraph.graph.message import add_messages
 
-
-class KernelAnalysisState(TypedDict, total=False):
-    # dict mapping filenames to lists of kernel source codes
-    source_codes: Dict[str, List[str]]
-    target_name: str
-
+class KernelAnalysisResult(BaseModel):
     has_float_division: bool
     float_division_explanation: str
 
@@ -31,6 +26,11 @@ class KernelAnalysisState(TypedDict, total=False):
     has_special_math_function: bool
     special_math_function_explanation: str
 
+class KernelAnalysisState(TypedDict, total=False):
+    # dict mapping filenames to lists of kernel source codes
+    source_codes: Dict[str, List[str]]
+    results : Dict[str, Dict[str, KernelAnalysisResult]]
+    target_name: str
 
 
 class FloatDivCheck(BaseModel):

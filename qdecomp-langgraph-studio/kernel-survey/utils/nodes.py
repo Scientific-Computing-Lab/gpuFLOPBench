@@ -1,4 +1,4 @@
-from utils.state import KernelAnalysisState, FloatDivCheck, CUDALibraryFunctionCallsCheck, RecursionCheck, WarpDivergenceCheck, DataDependentWarpDivergenceCheck, CommonSubexpressionEliminationCheck, SpecialMathFunctionCheck 
+from utils.state import KernelAnalysisState, KernelAnalysisResult, FloatDivCheck, CUDALibraryFunctionCallsCheck, RecursionCheck, WarpDivergenceCheck, DataDependentWarpDivergenceCheck, CommonSubexpressionEliminationCheck, SpecialMathFunctionCheck 
 
 from typing_extensions import TypedDict, List, Literal
 from pydantic import BaseModel, Field
@@ -19,7 +19,7 @@ import os
 # The ids of the configurables are from the Configuration class in configuration.py
 # This is needed to allow us to change the variables at runtime
 llm = ChatOpenAI(
-  openai_api_key="",
+  openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
   openai_api_base="https://openrouter.ai/api/v1",
   temperature=0.2,
   top_p=0.1,
@@ -57,45 +57,32 @@ def get_input_problem(state: KernelAnalysisState, config):
 
 def float_div_check_node(state: KernelAnalysisState, config):
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values.\n"
-         "Be sure to follow the following RULES when transforming the source code:\n{concretization_rules}\n"
-         "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
-         "{step1_example_before}\n\n"
-         "{step1_example_after}\n\n"
-         ),
-        ("human", 
-         "Target Kernel Name: {kernel_name}\n"
-         "Execution Arguments: {exec_args}\n"
-         "Grid Size: {grid_size}\nBlock Size: {block_size}\nTotal Number of Threads: {total_num_threads}\n\n"
-         "Please return the updated source code with evaluated input arguments, variables, references, template arguments, and preprocessor defines. Ensure to calculate as many variables as possible with their literal values in the target kernel invocation call and any intermediate variables that get calculated."
-         "Source code:\n```{source_code}```\n\n"
-         )
-    ])
-    chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
+    source_codes = state.get("source_codes", {})
+    results = state.get("results", {})
 
-    inputs = {
-        "source_code": state["source_code"],
-        "kernel_name": state["kernel_name"],
-        "exec_args": state["exec_args"],
-        "grid_size": state["grid_size"],
-        "block_size": state["block_size"], 
-        "total_num_threads": state["total_num_threads"], 
-        "step1_example_before": step1_example_before,
-        "step1_example_after": step1_example_after,
-        "concretization_rules": concretization_rules,
-    }
+    for filename, kernels in source_codes.items():
+        for kernel_src in kernels:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", 
+                 "You are a code analyzer that checks the given C/C++ CUDA kernel source code for floating-point division operations.\n"
+                 ),
+                ("human", 
+                 "Kernel Source Code:\n```{source_code}```\n\n"
+                 )
+            ])
+            chain = prompt | llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FloatDivCheck)
 
-    result = chain.invoke(inputs)
+            inputs = {
+                "source_code": kernel_src,
+            }
 
-    updated_source = result.content
+            result = chain.invoke(inputs)
+            if results[filename] is not None:
+                if results[filename][kernel_src] is not None:
+                    results[filename][kernel_src].has_float_division = result.has_float_division
+                    results[filename][kernel_src].float_div_explanation = result.float_div_explanation
+                else:
 
-    #print("\n\n\n")
-    #print("---------- BEGIN STEP 1: Source Code Concretization ----------")
-    #print(f"\n{updated_source}\n")
-    #print("---------- END STEP 1: Source Code Concretization ----------")
-    #print("\n\n\n")
 
     return {"src_concretized_input_args": updated_source,
                 "step1_messages": prompt.format_messages(**inputs) + [result]}
