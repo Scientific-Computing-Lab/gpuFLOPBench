@@ -13,6 +13,7 @@ from static_passes.recursion_check import check_has_recursion
 from static_passes.warp_divergence_check import check_has_warp_divergence
 from static_passes.dd_warp_divergence_check import check_has_dd_warp_divergence
 from static_passes.common_subexpr_check import check_has_common_subexpr
+from static_passes.math_fnct_check import check_has_math_fnct_calls
 from static_passes.TargetKernel import TargetKernel, TargetKernelEncoder
 
 
@@ -30,11 +31,12 @@ def classify_kernel(kernel_source):
     check_has_warp_divergence(kernel)
     check_has_dd_warp_divergence(kernel)
     check_has_common_subexpr(kernel)
+    check_has_math_fnct_calls(kernel)
 
-    if kernel.has_common_subexpression:
-        print("Common subexpression found in kernel source code!")
+    if kernel.has_special_math_function:
+        print("Special math function found in kernel source code!")
         print_code_with_line_numbers(kernel.source_code)
-        print("Line numbers:", kernel.common_subexpression_line_num)
+        print("Line numbers:", kernel.special_math_function_line_num)
 
     # Analyze the kernel source code and update the kernel object
     return kernel
