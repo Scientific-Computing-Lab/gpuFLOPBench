@@ -12,7 +12,13 @@ from static_passes.external_lib_call_check import check_external_lib_calls
 from static_passes.recursion_check import check_has_recursion
 from static_passes.warp_divergence_check import check_has_warp_divergence
 from static_passes.dd_warp_divergence_check import check_has_dd_warp_divergence
+from static_passes.common_subexpr_check import check_has_common_subexpr
 from static_passes.TargetKernel import TargetKernel, TargetKernelEncoder
+
+
+def print_code_with_line_numbers(source_code):
+    for i, line in enumerate(source_code.split('\n')):
+        print(f"{i+1:4d}: {line}")
 
 
 def classify_kernel(kernel_source):
@@ -23,10 +29,12 @@ def classify_kernel(kernel_source):
     check_has_recursion(kernel)
     check_has_warp_divergence(kernel)
     check_has_dd_warp_divergence(kernel)
+    check_has_common_subexpr(kernel)
 
-    if kernel.has_float_division:
-        print("Floating-point division found in kernel source code!")
-        print(kernel.source_code)
+    if kernel.has_common_subexpression:
+        print("Common subexpression found in kernel source code!")
+        print_code_with_line_numbers(kernel.source_code)
+        print("Line numbers:", kernel.common_subexpression_line_num)
 
     # Analyze the kernel source code and update the kernel object
     return kernel
