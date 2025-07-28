@@ -8,6 +8,10 @@ from utils.dataset import kernels_data, target_names
 sys.path.append(os.path.dirname(__file__))
 
 from static_passes.float_div_check import check_has_float_division
+from static_passes.external_lib_call_check import check_external_lib_calls
+from static_passes.recursion_check import check_has_recursion
+from static_passes.warp_divergence_check import check_has_warp_divergence
+from static_passes.dd_warp_divergence_check import check_has_dd_warp_divergence
 from static_passes.TargetKernel import TargetKernel, TargetKernelEncoder
 
 
@@ -15,6 +19,10 @@ def classify_kernel(kernel_source):
     kernel = TargetKernel(kernel_source)
 
     check_has_float_division(kernel)
+    check_external_lib_calls(kernel)
+    check_has_recursion(kernel)
+    check_has_warp_divergence(kernel)
+    check_has_dd_warp_divergence(kernel)
 
     if kernel.has_float_division:
         print("Floating-point division found in kernel source code!")

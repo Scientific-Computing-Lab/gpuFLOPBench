@@ -95,16 +95,14 @@ def check_has_float_division(input: TargetKernel):
 
             if left_type == 'float' or right_type == 'float':
                 input.has_float_division = True
-                input.float_division_line_num = node.start_point[0] + 1
-                return
+                input.float_division_line_num.append(node.start_point[0] + 1)
 
         # Check for fdividef function call
         if node.type == 'call_expression':
             function_node = node.child_by_field_name('function')
             if function_node and function_node.text.decode() == 'fdividef':
                 input.has_float_division = True
-                input.float_division_line_num = node.start_point[0] + 1
-                return
+                input.float_division_line_num.append(node.start_point[0] + 1)
 
         # Add children to the queue for visiting
         for child in node.children:
