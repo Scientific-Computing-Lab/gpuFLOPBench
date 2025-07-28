@@ -94,4 +94,4 @@ if __name__ == '__main__':
         with open(output_filename, 'w') as f:
             json.dump(cuda_defs, f, indent=4)
         
-        print(f"Extracted CUDA kernels saved to {output_filename}")
+        print(f"Extracted CUDA kernels saved to [{output_filename}]")
