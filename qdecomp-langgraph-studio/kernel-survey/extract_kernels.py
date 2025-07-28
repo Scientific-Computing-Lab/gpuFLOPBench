@@ -63,6 +63,7 @@ def extract_all_CUDA_function_defs(all_files_dict):
     all_functions = {}  # Maps function names to their node, source, and type
     all_function_calls = defaultdict(set) # Maps function name to set of called functions
     device_variables = defaultdict(dict) # Maps file_path to {var_name: declaration_text}
+    preprocessor_defs = defaultdict(dict) # Maps file_path to {macro_name: definition_text}
     
     def get_function_name(node):
         # function_definition -> function_declarator -> identifier
@@ -89,6 +90,13 @@ def extract_all_CUDA_function_defs(all_files_dict):
         
         for child in node.children:
             find_used_identifiers(child, identifiers)
+
+    def find_used_macros(node, used_macros, all_defs):
+        if node.type == 'type_identifier' and node.text.decode('utf8') in all_defs:
+            used_macros.add(node.text.decode('utf8'))
+
+        for child in node.children:
+            find_used_macros(child, used_macros, all_defs)
 
     def find_device_variable_declarations(node, file_path):
         if node.type == 'declaration' and '__device__' in node.text.decode('utf8'):
@@ -118,6 +126,18 @@ def extract_all_CUDA_function_defs(all_files_dict):
         for child in node.children:
             find_device_variable_declarations(child, file_path)
 
+    def find_preprocessor_defs(node, file_path):
+        if node.type == 'preproc_def':
+            define_text = node.text.decode('utf8')
+            children = node.children
+            # #define NAME ...
+            if len(children) > 1 and children[1].type == 'identifier':
+                macro_name = children[1].text.decode('utf8')
+                preprocessor_defs[file_path][macro_name] = define_text
+        
+        for child in node.children:
+            find_preprocessor_defs(child, file_path)
+
     # First pass: Collect all global and device functions and __device__ variables from all files
     for dir_name, files in all_files_dict.items():
         for file_path in files:
@@ -129,6 +149,7 @@ def extract_all_CUDA_function_defs(all_files_dict):
                 
                 # Find all __device__ variables declarations anywhere in the file
                 find_device_variable_declarations(tree.root_node, file_path)
+                find_preprocessor_defs(tree.root_node, file_path)
 
                 for node in tree.root_node.children:
                     if node.type == 'function_definition':
@@ -212,6 +233,16 @@ def extract_all_CUDA_function_defs(all_files_dict):
         all_device_vars = {}
         for file_vars in device_variables.values():
             all_device_vars.update(file_vars)
+        
+        # Collect all preprocessor defs from all files
+        all_preproc_defs = {}
+        for file_defs in preprocessor_defs.values():
+            all_preproc_defs.update(file_defs)
+
+        # Find used macros
+        used_macros = set()
+        for f_data in call_chain_funcs:
+            find_used_macros(f_data['node'], used_macros, all_preproc_defs)
 
         # Filter device variables to only those used in the call chain
         used_device_vars = set()
@@ -221,10 +252,15 @@ def extract_all_CUDA_function_defs(all_files_dict):
 
         prepended_code = sorted(list(used_device_vars))
 
+        # Add used preprocessor definitions
+        for macro_name in sorted(list(used_macros)):
+            if macro_name in all_preproc_defs:
+                prepended_code.append(all_preproc_defs[macro_name])
+
         for dep_name in deps_to_prepend:
             if dep_name in all_functions:
                 prepended_code.append(all_functions[dep_name]['source'])
-
+        
         final_code = "\n\n".join(prepended_code)
         if final_code:
             final_code += "\n\n"
