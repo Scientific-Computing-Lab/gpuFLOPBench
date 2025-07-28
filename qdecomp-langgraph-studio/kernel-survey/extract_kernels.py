@@ -42,27 +42,83 @@ def get_all_files():
 
 def extract_all_CUDA_function_defs(all_files_dict):
     """
-    Parses files to extract CUDA function definitions using tree-sitter.
+    Parses files to extract CUDA __global__ function definitions and any __device__
+    or other __global__ functions they call. It searches across all provided files
+    to find the definitions of called functions.
+
+    A __global__ function is only extracted as a standalone definition if it is not
+    called by any other __global__ or __device__ function within the set of
+    surveyed files.
 
     Args:
         all_files_dict (dict): A dictionary from get_all_files.
 
     Returns:
-        dict: A nested dictionary with the same keys as input, but values
-              are dicts mapping filenames to lists of function definition strings.
+        dict: A nested dictionary with the same structure as the input,
+              mapping filenames to lists of function definitions. Each definition
+              for a top-level __global__ function is prepended with the source code
+              of any functions it calls.
     """
     extracted_defs = defaultdict(lambda: defaultdict(list))
+    all_functions = {}  # Maps function names to their node, source, and type
+    all_function_calls = defaultdict(set) # Maps function name to set of called functions
+    device_variables = defaultdict(dict) # Maps file_path to {var_name: declaration_text}
+    
+    def get_function_name(node):
+        # function_definition -> function_declarator -> identifier
+        declarator = next((child for child in node.children if child.type == 'function_declarator'), None)
+        if declarator:
+            name_node = next((child for child in declarator.children if child.type == 'identifier'), None)
+            if name_node:
+                return name_node.text.decode('utf8')
+        return None
 
-    def find_function_definitions(node, function_list):
-        if node.type == 'function_definition':
-            # Check for __global__ or __device__ keywords
-            declaration = node.text.decode('utf8').split('{')[0]
-            if '__global__' in declaration or '__device__' in declaration:
-                function_list.append(node)
-            return
+    def find_function_calls(node, called_functions):
+        if node.type == 'call_expression':
+            # call_expression -> identifier
+            identifier_node = next((child for child in node.children if child.type == 'identifier'), None)
+            if identifier_node:
+                called_functions.add(identifier_node.text.decode('utf8'))
+        
         for child in node.children:
-            find_function_definitions(child, function_list)
+            find_function_calls(child, called_functions)
 
+    def find_used_identifiers(node, identifiers):
+        if node.type == 'identifier':
+            identifiers.add(node.text.decode('utf8'))
+        
+        for child in node.children:
+            find_used_identifiers(child, identifiers)
+
+    def find_device_variable_declarations(node, file_path):
+        if node.type == 'declaration' and '__device__' in node.text.decode('utf8'):
+            declaration_text = node.text.decode('utf8')
+            
+            declarator_list = next((child for child in node.children if child.type in ['init_declarator_list', 'declaration_list']), None)
+            array_declarator = next((child for child in node.children if child.type == 'array_declarator'), None)
+
+            if declarator_list:
+                for declarator in declarator_list.children:
+                    if declarator.type == 'init_declarator':
+                        identifier_node = next((child for child in declarator.children if child.type == 'identifier'), None)
+                        if not identifier_node: # check in nested declarator
+                            nested_declarator = next((child for child in declarator.children if child.type == 'declarator'), None)
+                            if nested_declarator:
+                                identifier_node = next((child for child in nested_declarator.children if child.type == 'identifier'), None)
+                        
+                        if identifier_node:
+                            var_name = identifier_node.text.decode('utf8')
+                            device_variables[file_path][var_name] = declaration_text
+            elif array_declarator:
+                identifier_node = next((child for child in array_declarator.children if child.type == 'identifier'), None)
+                if identifier_node:
+                    var_name = identifier_node.text.decode('utf8')
+                    device_variables[file_path][var_name] = declaration_text
+        
+        for child in node.children:
+            find_device_variable_declarations(child, file_path)
+
+    # First pass: Collect all global and device functions and __device__ variables from all files
     for dir_name, files in all_files_dict.items():
         for file_path in files:
             try:
@@ -70,17 +126,111 @@ def extract_all_CUDA_function_defs(all_files_dict):
                     source_code = f.read()
                 
                 tree = parser.parse(bytes(source_code, "utf8"))
-                root_node = tree.root_node
                 
-                function_nodes = []
-                find_function_definitions(root_node, function_nodes)
+                # Find all __device__ variables declarations anywhere in the file
+                find_device_variable_declarations(tree.root_node, file_path)
 
-                if function_nodes:
-                    for node in function_nodes:
-                        extracted_defs[dir_name][file_path].append(node.text.decode('utf8'))
+                for node in tree.root_node.children:
+                    if node.type == 'function_definition':
+                        declaration = node.text.decode('utf8').split('{')[0]
+                        func_name = get_function_name(node)
+                        if not func_name:
+                            continue
 
+                        func_type = None
+                        if '__global__' in declaration:
+                            func_type = 'global'
+                        elif '__device__' in declaration:
+                            func_type = 'device'
+                        
+                        if func_type:
+                            all_functions[func_name] = {
+                                'node': node,
+                                'source': node.text.decode('utf8'),
+                                'type': func_type,
+                                'file_path': file_path,
+                                'dir_name': dir_name
+                            }
             except Exception as e:
-                print(f"Error processing file {file_path}: {e}")
+                print(f"Error processing file {file_path} in first pass: {e}")
+
+    # Second pass: Build the call graph for all functions
+    for func_name, func_data in all_functions.items():
+        find_function_calls(func_data['node'], all_function_calls[func_name])
+
+    # Identify all functions that are called by other functions
+    called_functions = set()
+    for calls in all_function_calls.values():
+        called_functions.update(calls)
+
+    # Third pass: Identify top-level global functions and generate their code
+    top_level_global_funcs = {
+        name: data for name, data in all_functions.items()
+        if data['type'] == 'global' and name not in called_functions
+    }
+
+    def get_transitive_calls(func_name, visited):
+        if func_name in visited:
+            return []
+        visited.add(func_name)
+        
+        dependencies = []
+        # Direct dependencies in a deterministic order
+        direct_calls = sorted(list(all_function_calls.get(func_name, set())))
+        
+        # Recursively find dependencies of dependencies
+        for called_func in direct_calls:
+            if called_func in all_functions:
+                deps = get_transitive_calls(called_func, visited)
+                for d in deps:
+                    if d not in dependencies:
+                        dependencies.append(d)
+        
+        # Add the direct dependencies after their own dependencies
+        for called_func in direct_calls:
+             if called_func in all_functions and called_func not in dependencies:
+                dependencies.append(called_func)
+
+        return dependencies
+
+    for func_name, func_data in top_level_global_funcs.items():
+        # The dependencies are all functions in the call graph starting from this function,
+        # excluding the function itself. We pre-seed visited with the top-level function name.
+        deps_to_prepend = get_transitive_calls(func_name, set([func_name]))
+        
+        # Get all functions in the call chain, including the top-level one
+        call_chain_funcs = [func_data] + [all_functions[name] for name in deps_to_prepend if name in all_functions]
+
+        # Find all identifiers used in the function bodies of the call chain
+        used_identifiers = set()
+        for f_data in call_chain_funcs:
+            body = next((child for child in f_data['node'].children if child.type == 'compound_statement'), None)
+            if body:
+                find_used_identifiers(body, used_identifiers)
+
+        # Collect all device variables from all files to check against used identifiers
+        all_device_vars = {}
+        for file_vars in device_variables.values():
+            all_device_vars.update(file_vars)
+
+        # Filter device variables to only those used in the call chain
+        used_device_vars = set()
+        for var_name, declaration in all_device_vars.items():
+            if var_name in used_identifiers:
+                used_device_vars.add(declaration)
+
+        prepended_code = sorted(list(used_device_vars))
+
+        for dep_name in deps_to_prepend:
+            if dep_name in all_functions:
+                prepended_code.append(all_functions[dep_name]['source'])
+
+        final_code = "\n\n".join(prepended_code)
+        if final_code:
+            final_code += "\n\n"
+        final_code += func_data['source']
+        
+        extracted_defs[func_data['dir_name']][func_data['file_path']].append(final_code)
 
     return json.loads(json.dumps(extracted_defs))
 
