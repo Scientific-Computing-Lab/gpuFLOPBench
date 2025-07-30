@@ -1,5 +1,11 @@
 from .TargetKernel import TargetKernel
+from .math_fnct_check import CUDA_MATH_FUNCTIONS
 
+IGNORE_CASES = CUDA_MATH_FUNCTIONS | {
+    '__syncthreads',
+    'reinterpret_cast',
+    'static_cast',
+}
 
 def check_external_lib_calls(input: TargetKernel):
     """
@@ -39,8 +45,8 @@ def check_external_lib_calls(input: TargetKernel):
             if function_node and function_node.type == 'identifier':
                 function_name = function_node.text.decode()
                 
-                # Check if it's not defined in the current file
-                if function_name not in defined_functions:
+                # Check if it's not defined in the current file and not a CUDA math function
+                if (function_name not in defined_functions) and (function_name not in IGNORE_CASES):
                     input.has_external_function_calls = True
                     input.external_function_call_line_num.append(node.start_point[0] + 1)
 
