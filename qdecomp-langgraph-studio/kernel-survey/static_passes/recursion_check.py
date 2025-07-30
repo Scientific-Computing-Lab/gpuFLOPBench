@@ -20,12 +20,18 @@ def check_has_recursion(input: TargetKernel):
     A recursive call is a call to a function from within its own body.
     """
     
-    # We need to check each function definition for recursion
-    function_definitions = [node for node in input.root_node.children if node.type == 'function_definition']
-    
+    # Traverse the entire tree to find all function definitions
+    function_definitions = []
+    queue = [input.root_node]
+    while queue:
+        node = queue.pop(0)
+        if node.type == 'function_definition':
+            function_definitions.append(node)
+        queue.extend(node.children)
+
     for func_def_node in function_definitions:
         # 1. Get the name of the function being defined.
-        declarator = func_def_node.child_by_field_name('declarator')
+        declarator = next((child for child in func_def_node.children if child.type == 'function_declarator'), None)
         function_name = find_function_name(declarator)
         
         if not function_name:
@@ -44,9 +50,11 @@ def check_has_recursion(input: TargetKernel):
             # 3. Look for call_expression nodes.
             if current_node.type == 'call_expression':
                 called_function_node = current_node.child_by_field_name('function')
-                if called_function_node and called_function_node.type == 'identifier':
-                    called_function_name = called_function_node.text.decode()
-                    
+                
+                # Handle cases where the function call is through a pointer or other complex expression
+                called_function_name = find_function_name(called_function_node)
+
+                if called_function_name:
                     # 4. If it's a call to the same function, it's recursion.
                     if called_function_name == function_name:
                         input.has_recursion = True

@@ -202,6 +202,7 @@ def extract_all_CUDA_function_defs(all_files_dict):
         # Recursively find dependencies of dependencies
         for called_func in direct_calls:
             if called_func in all_functions:
+                # Pass the same visited set to the recursive call
                 deps = get_transitive_calls(called_func, visited)
                 for d in deps:
                     if d not in dependencies:
@@ -215,12 +216,13 @@ def extract_all_CUDA_function_defs(all_files_dict):
         return dependencies
 
     for func_name, func_data in top_level_global_funcs.items():
-        # The dependencies are all functions in the call graph starting from this function,
-        # excluding the function itself. We pre-seed visited with the top-level function name.
-        deps_to_prepend = get_transitive_calls(func_name, set([func_name]))
+        # The dependencies are all functions in the call graph starting from this function.
+        # We use a new visited set for each top-level function.
+        deps_to_prepend = get_transitive_calls(func_name, set())
         
         # Get all functions in the call chain, including the top-level one
-        call_chain_funcs = [func_data] + [all_functions[name] for name in deps_to_prepend if name in all_functions]
+        call_chain_func_names = [func_name] + deps_to_prepend
+        call_chain_funcs = [all_functions[name] for name in call_chain_func_names if name in all_functions]
 
         # Find all identifiers used in the function bodies of the call chain
         used_identifiers = set()
