@@ -70,29 +70,44 @@ def extract_all_CUDA_function_defs(all_files_dict):
             # template_declaration -> function_definition -> function_declarator -> identifier
             func_def = next((child for child in node.children if child.type == 'function_definition'), None)
             if func_def:
-                return get_function_name(func_def) # Recurse on the function_definition node
+                return get_function_name(func_def)  # Recurse on the function_definition node
         elif node.type == 'function_definition':
-            # function_definition -> function_declarator -> identifier
+            # function_definition -> function_declarator -> identifier (including templates)
             declarator = next((child for child in node.children if child.type == 'function_declarator'), None)
             if declarator:
-                name_node = next((child for child in declarator.children if child.type == 'identifier'), None)
+                # recursively find the first identifier under declarator
+                def find_id(n):
+                    if n.type == 'identifier':
+                        return n
+                    for c in n.children:
+                        res = find_id(c)
+                        if res:
+                            return res
+                    return None
+
+                name_node = find_id(declarator)
                 if name_node:
                     return name_node.text.decode('utf8')
         return None
 
     def find_function_calls(node, called_functions):
         if node.type == 'call_expression':
+            # A call expression can be a simple identifier or a template function.
+            
+            # Case 1: Simple identifier (e.g., myFunction())
             # call_expression -> identifier
             identifier_node = next((child for child in node.children if child.type == 'identifier'), None)
             if identifier_node:
                 called_functions.add(identifier_node.text.decode('utf8'))
-            else:
-                # Check for template function call: call_expression -> template_function -> identifier
-                template_function_node = next((child for child in node.children if child.type == 'template_function'), None)
-                if template_function_node:
-                    identifier_node = next((child for child in template_function_node.children if child.type == 'identifier'), None)
-                    if identifier_node:
-                        called_functions.add(identifier_node.text.decode('utf8'))
+
+            # Case 2: Template function (e.g., myTemplate<T>())
+            # call_expression -> template_function -> identifier
+            template_function_node = next((child for child in node.children if child.type == 'template_function'), None)
+            if template_function_node:
+                # The identifier is a child of template_function
+                template_identifier_node = next((child for child in template_function_node.children if child.type == 'identifier'), None)
+                if template_identifier_node:
+                    called_functions.add(template_identifier_node.text.decode('utf8'))
         
         for child in node.children:
             find_function_calls(child, called_functions)
@@ -151,48 +166,74 @@ def extract_all_CUDA_function_defs(all_files_dict):
         for child in node.children:
             find_preprocessor_defs(child, file_path)
 
+    def find_all_declaration_nodes(root_node):
+        """
+        Recursively collect all function_definition and template_declaration nodes in the AST.
+        """
+        nodes = []
+        def recurse(n):
+            if n.type in ('function_definition', 'template_declaration'):
+                nodes.append(n)
+            for c in n.children:
+                recurse(c)
+        recurse(root_node)
+        return nodes
+
     # First pass: Collect all global and device functions and __device__ variables from all files
     for dir_name, files in all_files_dict.items():
         for file_path in files:
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     source_code = f.read()
-                
                 tree = parser.parse(bytes(source_code, "utf8"))
-                
                 # Find all __device__ variables declarations anywhere in the file
                 find_device_variable_declarations(tree.root_node, file_path)
                 find_preprocessor_defs(tree.root_node, file_path)
-
-                for node in tree.root_node.children:
-                    if node.type == 'function_definition' or node.type == 'template_declaration':
-                        # For template_declaration, the actual function_definition is nested.
-                        # The text needs to be from the outer node.
-                        declaration_node = node
-                        if node.type == 'template_declaration':
-                            func_def_child = next((child for child in node.children if child.type == 'function_definition'), None)
-                            if not func_def_child:
-                                continue
-                        
-                        declaration = declaration_node.text.decode('utf8').split('{')[0]
-                        func_name = get_function_name(declaration_node)
-                        if not func_name:
+                # Collect all function and template declarations anywhere in the file
+                for declaration_node in find_all_declaration_nodes(tree.root_node):
+                    # The text needs to be from the outer node for template_declarations
+                    if declaration_node.type == 'template_declaration':
+                        func_def_child = next((child for child in declaration_node.children if child.type == 'function_definition'), None)
+                        if not func_def_child:
                             continue
+                    declaration = declaration_node.text.decode('utf8').split('{')[0]
+                    func_name = get_function_name(declaration_node)
+                    if not func_name:
+                        continue
 
-                        func_type = None
-                        if '__global__' in declaration:
-                            func_type = 'global'
-                        elif '__device__' in declaration:
-                            func_type = 'device'
+                    func_type = None
+                     
+                    func_def_node = declaration_node
+                    if declaration_node.type == 'template_declaration':
+                        func_def_node = next((child for child in declaration_node.children if child.type == 'function_definition'), None)
+
+                    if func_def_node:
+                        specifiers_nodes = []
+                        for child in func_def_node.children:
+                            if child.type in ['function_declarator', 'compound_statement']:
+                                break
+                            specifiers_nodes.append(child)
                         
-                        if func_type:
-                            all_functions[func_name] = {
-                                'node': declaration_node, # Use the outer node for call graph analysis
-                                'source': declaration_node.text.decode('utf8'),
-                                'type': func_type,
-                                'file_path': file_path,
-                                'dir_name': dir_name
-                            }
+                        # Deep search for __global__ or __device__ nodes
+                        q = specifiers_nodes
+                        while q:
+                            curr = q.pop(0)
+                            if curr.type == '__global__':
+                                func_type = 'global'
+                                break
+                            if curr.type == '__device__':
+                                func_type = 'device'
+                                break
+                            q.extend(curr.children)
+                        
+                    if func_type:
+                        all_functions[func_name] = {
+                            'node': declaration_node, # Use the outer node for call graph analysis
+                            'source': declaration_node.text.decode('utf8'),
+                            'type': func_type,
+                            'file_path': file_path,
+                            'dir_name': dir_name
+                        }
             except Exception as e:
                 print(f"Error processing file {file_path} in first pass: {e}")
 
@@ -205,10 +246,16 @@ def extract_all_CUDA_function_defs(all_files_dict):
     for calls in all_function_calls.values():
         called_functions.update(calls)
 
-    # Third pass: Identify top-level global functions and generate their code
+    # Third pass: Identify top-level __global__ functions and generate their code
+    # Only include functions explicitly marked as global and not called by others
+    # Determine which functions are true top-level __global__ kernels
     top_level_global_funcs = {
-        name: data for name, data in all_functions.items()
-        if data['type'] == 'global' and name not in called_functions
+        name: data
+        for name, data in all_functions.items()
+        # only dict entries with explicit 'global' type and never called
+        if isinstance(data, dict)
+           and data.get('type') == 'global'
+           and name not in called_functions
     }
 
     def get_transitive_calls(func_name, visited):
