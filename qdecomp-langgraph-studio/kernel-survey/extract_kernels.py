@@ -66,12 +66,18 @@ def extract_all_CUDA_function_defs(all_files_dict):
     preprocessor_defs = defaultdict(dict) # Maps file_path to {macro_name: definition_text}
     
     def get_function_name(node):
-        # function_definition -> function_declarator -> identifier
-        declarator = next((child for child in node.children if child.type == 'function_declarator'), None)
-        if declarator:
-            name_node = next((child for child in declarator.children if child.type == 'identifier'), None)
-            if name_node:
-                return name_node.text.decode('utf8')
+        if node.type == 'template_declaration':
+            # template_declaration -> function_definition -> function_declarator -> identifier
+            func_def = next((child for child in node.children if child.type == 'function_definition'), None)
+            if func_def:
+                return get_function_name(func_def) # Recurse on the function_definition node
+        elif node.type == 'function_definition':
+            # function_definition -> function_declarator -> identifier
+            declarator = next((child for child in node.children if child.type == 'function_declarator'), None)
+            if declarator:
+                name_node = next((child for child in declarator.children if child.type == 'identifier'), None)
+                if name_node:
+                    return name_node.text.decode('utf8')
         return None
 
     def find_function_calls(node, called_functions):
@@ -80,6 +86,13 @@ def extract_all_CUDA_function_defs(all_files_dict):
             identifier_node = next((child for child in node.children if child.type == 'identifier'), None)
             if identifier_node:
                 called_functions.add(identifier_node.text.decode('utf8'))
+            else:
+                # Check for template function call: call_expression -> template_function -> identifier
+                template_function_node = next((child for child in node.children if child.type == 'template_function'), None)
+                if template_function_node:
+                    identifier_node = next((child for child in template_function_node.children if child.type == 'identifier'), None)
+                    if identifier_node:
+                        called_functions.add(identifier_node.text.decode('utf8'))
         
         for child in node.children:
             find_function_calls(child, called_functions)
@@ -152,9 +165,17 @@ def extract_all_CUDA_function_defs(all_files_dict):
                 find_preprocessor_defs(tree.root_node, file_path)
 
                 for node in tree.root_node.children:
-                    if node.type == 'function_definition':
-                        declaration = node.text.decode('utf8').split('{')[0]
-                        func_name = get_function_name(node)
+                    if node.type == 'function_definition' or node.type == 'template_declaration':
+                        # For template_declaration, the actual function_definition is nested.
+                        # The text needs to be from the outer node.
+                        declaration_node = node
+                        if node.type == 'template_declaration':
+                            func_def_child = next((child for child in node.children if child.type == 'function_definition'), None)
+                            if not func_def_child:
+                                continue
+                        
+                        declaration = declaration_node.text.decode('utf8').split('{')[0]
+                        func_name = get_function_name(declaration_node)
                         if not func_name:
                             continue
 
@@ -166,8 +187,8 @@ def extract_all_CUDA_function_defs(all_files_dict):
                         
                         if func_type:
                             all_functions[func_name] = {
-                                'node': node,
-                                'source': node.text.decode('utf8'),
+                                'node': declaration_node, # Use the outer node for call graph analysis
+                                'source': declaration_node.text.decode('utf8'),
                                 'type': func_type,
                                 'file_path': file_path,
                                 'dir_name': dir_name

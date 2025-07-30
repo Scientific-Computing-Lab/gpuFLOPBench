@@ -1,6 +1,7 @@
 from .TargetKernel import TargetKernel
 from .math_fnct_check import CUDA_MATH_FUNCTIONS
 
+# we do not consider codes calling internal CUDA functions or C++ casts as external calls
 IGNORE_CASES = CUDA_MATH_FUNCTIONS | {
     '__syncthreads',
     'reinterpret_cast',
