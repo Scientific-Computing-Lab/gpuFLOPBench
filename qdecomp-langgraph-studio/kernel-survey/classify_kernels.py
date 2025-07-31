@@ -15,6 +15,7 @@ from static_passes.dd_warp_divergence_check import check_has_dd_warp_divergence
 from static_passes.common_subexpr_check import check_has_common_subexpr
 from static_passes.math_fnct_check import check_has_math_fnct_calls
 from static_passes.TargetKernel import TargetKernel, TargetKernelEncoder
+from tqdm import tqdm  # type: ignore
 
 
 def print_code_with_line_numbers(source_code):
@@ -33,10 +34,10 @@ def classify_kernel(kernel_source):
     check_has_common_subexpr(kernel)
     check_has_math_fnct_calls(kernel)
 
-    if kernel.has_special_math_function:
-        print("Special math function found in kernel source code!")
-        print_code_with_line_numbers(kernel.source_code)
-        print("Line numbers:", kernel.special_math_function_line_num)
+    #if kernel.has_special_math_function:
+    #    print("Special math function found in kernel source code!")
+    #    print_code_with_line_numbers(kernel.source_code)
+    #    print("Line numbers:", kernel.special_math_function_line_num)
 
     # Analyze the kernel source code and update the kernel object
     return kernel
@@ -46,12 +47,12 @@ def main():
     results = {}
 
     # Visit each kernel in the JSON data
-    for benchmark_name, files in kernels_data.items():
+    for benchmark_name, files in tqdm(kernels_data.items(), desc="Benchmarks"):
         results[benchmark_name] = {}
-        for file_path, kernels in files.items():
+        for file_path, kernels in tqdm(files.items(), desc="Files", leave=False):
             results[benchmark_name][file_path] = []
-            for i, kernel_source in enumerate(kernels):
-                print(f"Classifying kernel {i+1} from {file_path} in {benchmark_name}...")
+            for i, kernel_source in enumerate(tqdm(kernels, desc="Kernels", leave=False)):
+                #print(f"Classifying kernel {i+1} from {file_path} in {benchmark_name}...")
                 result = classify_kernel(kernel_source)
                 results[benchmark_name][file_path].append(result)
 

@@ -2,12 +2,8 @@ import os
 import json
 from collections import defaultdict
 
-import re
-from tree_sitter import Language, Parser
-import tree_sitter_cuda
-
-CUDA_LANGUAGE = Language(tree_sitter_cuda.language())
-parser = Parser(CUDA_LANGUAGE)
+from utils.ts_helper import *
+from tqdm import tqdm
 
 def get_all_files():
     """
@@ -64,131 +60,18 @@ def extract_all_CUDA_function_defs(all_files_dict):
     all_function_calls = defaultdict(set) # Maps function name to set of called functions
     device_variables = defaultdict(dict) # Maps file_path to {var_name: declaration_text}
     preprocessor_defs = defaultdict(dict) # Maps file_path to {macro_name: definition_text}
-    
-    def get_function_name(node):
-        if node.type == 'template_declaration':
-            # template_declaration -> function_definition -> function_declarator -> identifier
-            func_def = next((child for child in node.children if child.type == 'function_definition'), None)
-            if func_def:
-                return get_function_name(func_def)  # Recurse on the function_definition node
-        elif node.type == 'function_definition':
-            # function_definition -> function_declarator -> identifier (including templates)
-            declarator = next((child for child in node.children if child.type == 'function_declarator'), None)
-            if declarator:
-                # recursively find the first identifier under declarator
-                def find_id(n):
-                    if n.type == 'identifier':
-                        return n
-                    for c in n.children:
-                        res = find_id(c)
-                        if res:
-                            return res
-                    return None
 
-                name_node = find_id(declarator)
-                if name_node:
-                    return name_node.text.decode('utf8')
-        return None
-
-    def find_function_calls(node, called_functions):
-        if node.type == 'call_expression':
-            # A call expression can be a simple identifier or a template function.
-            
-            # Case 1: Simple identifier (e.g., myFunction())
-            # call_expression -> identifier
-            identifier_node = next((child for child in node.children if child.type == 'identifier'), None)
-            if identifier_node:
-                called_functions.add(identifier_node.text.decode('utf8'))
-
-            # Case 2: Template function (e.g., myTemplate<T>())
-            # call_expression -> template_function -> identifier
-            template_function_node = next((child for child in node.children if child.type == 'template_function'), None)
-            if template_function_node:
-                # The identifier is a child of template_function
-                template_identifier_node = next((child for child in template_function_node.children if child.type == 'identifier'), None)
-                if template_identifier_node:
-                    called_functions.add(template_identifier_node.text.decode('utf8'))
-        
-        for child in node.children:
-            find_function_calls(child, called_functions)
-
-    def find_used_identifiers(node, identifiers):
-        if node.type == 'identifier':
-            identifiers.add(node.text.decode('utf8'))
-        
-        for child in node.children:
-            find_used_identifiers(child, identifiers)
-
-    def find_used_macros(node, used_macros, all_defs):
-        if node.type == 'type_identifier' and node.text.decode('utf8') in all_defs:
-            used_macros.add(node.text.decode('utf8'))
-
-        for child in node.children:
-            find_used_macros(child, used_macros, all_defs)
-
-    def find_device_variable_declarations(node, file_path):
-        if node.type == 'declaration' and '__device__' in node.text.decode('utf8'):
-            declaration_text = node.text.decode('utf8')
-            
-            declarator_list = next((child for child in node.children if child.type in ['init_declarator_list', 'declaration_list']), None)
-            array_declarator = next((child for child in node.children if child.type == 'array_declarator'), None)
-
-            if declarator_list:
-                for declarator in declarator_list.children:
-                    if declarator.type == 'init_declarator':
-                        identifier_node = next((child for child in declarator.children if child.type == 'identifier'), None)
-                        if not identifier_node: # check in nested declarator
-                            nested_declarator = next((child for child in declarator.children if child.type == 'declarator'), None)
-                            if nested_declarator:
-                                identifier_node = next((child for child in nested_declarator.children if child.type == 'identifier'), None)
-                        
-                        if identifier_node:
-                            var_name = identifier_node.text.decode('utf8')
-                            device_variables[file_path][var_name] = declaration_text
-            elif array_declarator:
-                identifier_node = next((child for child in array_declarator.children if child.type == 'identifier'), None)
-                if identifier_node:
-                    var_name = identifier_node.text.decode('utf8')
-                    device_variables[file_path][var_name] = declaration_text
-        
-        for child in node.children:
-            find_device_variable_declarations(child, file_path)
-
-    def find_preprocessor_defs(node, file_path):
-        if node.type == 'preproc_def':
-            define_text = node.text.decode('utf8')
-            children = node.children
-            # #define NAME ...
-            if len(children) > 1 and children[1].type == 'identifier':
-                macro_name = children[1].text.decode('utf8')
-                preprocessor_defs[file_path][macro_name] = define_text
-        
-        for child in node.children:
-            find_preprocessor_defs(child, file_path)
-
-    def find_all_declaration_nodes(root_node):
-        """
-        Recursively collect all function_definition and template_declaration nodes in the AST.
-        """
-        nodes = []
-        def recurse(n):
-            if n.type in ('function_definition', 'template_declaration'):
-                nodes.append(n)
-            for c in n.children:
-                recurse(c)
-        recurse(root_node)
-        return nodes
 
     # First pass: Collect all global and device functions and __device__ variables from all files
-    for dir_name, files in all_files_dict.items():
-        for file_path in files:
+    for dir_name, files in tqdm(all_files_dict.items(), desc="First pass: Collecting functions"):
+        for file_path in tqdm(files, desc=f"Processing {dir_name}", leave=False):
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     source_code = f.read()
                 tree = parser.parse(bytes(source_code, "utf8"))
                 # Find all __device__ variables declarations anywhere in the file
-                find_device_variable_declarations(tree.root_node, file_path)
-                find_preprocessor_defs(tree.root_node, file_path)
+                find_device_variable_declarations(tree.root_node, file_path, device_variables)
+                find_preprocessor_defs(tree.root_node, file_path, preprocessor_defs)
                 # Collect all function and template declarations anywhere in the file
                 for declaration_node in find_all_declaration_nodes(tree.root_node):
                     # The text needs to be from the outer node for template_declarations
@@ -238,7 +121,7 @@ def extract_all_CUDA_function_defs(all_files_dict):
                 print(f"Error processing file {file_path} in first pass: {e}")
 
     # Second pass: Build the call graph for all functions
-    for func_name, func_data in all_functions.items():
+    for func_name, func_data in tqdm(all_functions.items(), desc="Second pass: Building call graph"):
         find_function_calls(func_data['node'], all_function_calls[func_name])
 
     # Identify all functions that are called by other functions
@@ -258,35 +141,11 @@ def extract_all_CUDA_function_defs(all_files_dict):
            and name not in called_functions
     }
 
-    def get_transitive_calls(func_name, visited):
-        if func_name in visited:
-            return []
-        visited.add(func_name)
-        
-        dependencies = []
-        # Direct dependencies in a deterministic order
-        direct_calls = sorted(list(all_function_calls.get(func_name, set())))
-        
-        # Recursively find dependencies of dependencies
-        for called_func in direct_calls:
-            if called_func in all_functions:
-                # Pass the same visited set to the recursive call
-                deps = get_transitive_calls(called_func, visited)
-                for d in deps:
-                    if d not in dependencies:
-                        dependencies.append(d)
-        
-        # Add the direct dependencies after their own dependencies
-        for called_func in direct_calls:
-             if called_func in all_functions and called_func not in dependencies:
-                dependencies.append(called_func)
 
-        return dependencies
-
-    for func_name, func_data in top_level_global_funcs.items():
+    for func_name, func_data in tqdm(top_level_global_funcs.items(), desc="Third pass: Generating code"):
         # The dependencies are all functions in the call graph starting from this function.
         # We use a new visited set for each top-level function.
-        deps_to_prepend = get_transitive_calls(func_name, set())
+        deps_to_prepend = get_transitive_calls(func_name, set(), all_function_calls, all_functions)
         
         # Get all functions in the call chain, including the top-level one
         call_chain_func_names = [func_name] + deps_to_prepend
