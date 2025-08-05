@@ -137,6 +137,7 @@ class KernelAnalysisState(TypedDict, total=False):
     kernel_annotated_WDPs: str
 
     wdps_list: List[WarpDivergencePoint]  # List of tuples with warp divergence point source code and classification
+    wdp_processing_index: int # Index for processing WDPs
     wdps_num_executions: List[NumExecutions] # Corresponding number of executions for each warp divergence point
 
     kernel_annotated_num_ops: str

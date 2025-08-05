@@ -36,6 +36,8 @@ workflow.add_node("wdp_num_execution_calculations_7b", wdp_num_executions_calcul
 workflow.add_node("kernel_num_ops_annotator_8", kernel_num_ops_annotator)
 workflow.add_node("num_ops_checker_8a", num_ops_checker)
 
+
+
 workflow.add_node("kernel_ops_summarizer_9", kernel_ops_summarizer)
 
 
@@ -105,11 +107,16 @@ workflow.add_conditional_edges(source="num_ops_checker_8a",
 
 workflow.add_edge("kernel_wdp_variables_annotator_7", "wdp_list_extractor_7a")
 
-workflow.add_edge(["wdp_list_extractor_7a"], "wdp_num_execution_calculations_7b")
+workflow.add_edge("wdp_list_extractor_7a", "wdp_num_execution_calculations_7b")
 
-workflow.add_edge([
-    "wdp_num_execution_calculations_7b",
-], "kernel_ops_summarizer_9")
+workflow.add_conditional_edges(
+    source="wdp_num_execution_calculations_7b",
+    path=wdp_num_executions_looper,
+    path_map={
+        "continue": "wdp_num_execution_calculations_7b",
+        "end": "kernel_ops_summarizer_9"
+    }
+)
 
 workflow.add_edge("kernel_ops_summarizer_9", END)
 

@@ -800,7 +800,7 @@ if (1)```\n\n"""
     print("---------- END STEP 7a: WDP Extraction ----------")
     print("\n\n\n")
 
-    return {"wdps_list": wdps}
+    return {"wdps_list": wdps, "wdp_processing_index": 0, "wdps_num_executions": []}
 
 
 
@@ -816,82 +816,85 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
 
     calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions)
 
-    wdps = state["wdps_list"]
+    processing_idx = state["wdp_processing_index"]
+    wdp = state["wdps_list"][processing_idx]
 
     print("\n\n\n")
-    print("WDPS")
-    print(wdps)
+    print(f"Processing WDP at index: {processing_idx}")
+    print(wdp)
     print("\n\n\n")
 
     print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------")
 
-    calculated_executions = []
+    condition_type = {'if': 'if', 'else-if': 'if', 'for': 'for', 'while': 'for', 'do-while': 'for', 'ternary': 'if'}.get(wdp.classification, None)
 
-    for idx, wdp in enumerate(wdps):
+    if condition_type is None:
+        raise ValueError(f"Unsupported WDP classification: {wdp.classification}. Supported classifications are: 'if', 'else-if', 'for', 'while', 'do-while', 'ternary'.")
 
-        condition_type = {'if': 'if', 'else-if': 'if', 'for': 'for', 'while': 'for', 'do-while': 'for', 'ternary': 'if'}.get(wdp.classification, None)
+    if condition_type == 'if':
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", 
+                "You are an execution analysis expert that calculates the number of times a conditional statement will be entered, given the its conditional logic and the range of values that the variables use in the conditional logic statement could take.\n"
+                "The conditional statement and it's logic is provided as a source code snippet, with the range of values of its dependent variables provided as a comment on the lines above the loop statement.\n"
+            ),
+            ("human",
+                "For the following loop in C++:\n"
+                "{source_code_snippet}\n\n"
+                "Explain the following:\n"
+                "1) Create a mathematical formula that calculates the number of iterations the loop will perform for any given input variables within the supplied ranges.\n"
+                "2) Create a mathematical formula that sums the total number of iterations performed for all valid input variables within the supplied ranges.\n"
+                "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
+            "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the loop will never execute.\n"
+            "The mathematical formulas and reasoning behind the calculations should be provided in the num_executions_explanation field of the tool call.\n"
+                )
+        ])
+    elif condition_type == 'for':
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", 
+                "You are an execution analysis expert that calculates the number of times a conditional loop will be executed, given the loop's conditional logic statement and the range of all possible values that the variables use in the conditional logic statement.\n"
+                "The loop and it's logic is provided as a source code snippet, and the range of values of its variables is provided as a comment on the lines above the conditional logic statement.\n"
+            ),
+            ("human",
+                "For the following conditional statement in C++:\n"
+                "{source_code_snippet}\n\n"
+                "Explain the following:\n"
+                "1) Create a mathematical formula that calculates the number of times the statement will be executed for any given input variables within the supplied ranges.\n"
+                "2) Create a mathematical formula that sums the total number of executions performed for all valid input variables within the supplied ranges.\n"
+                "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of executions from all the valid input variables within the supplied ranges.\n"
+            "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the conditional will never execute.\n"
+            "The mathematical formulas and reasoning behind the calculations should be provided in the num_executions_explanation field of the tool call.\n"
+                )
+        ])
+    else:
+        raise ValueError(f"Unsupported WDP classification for number of executions calculation: {condition_type}. Supported classifications are: 'if', 'for'.")
 
-        if condition_type is None:
-            raise ValueError(f"Unsupported WDP classification: {wdp.classification}. Supported classifications are: 'if', 'else-if', 'for', 'while', 'do-while', 'ternary'.")
+    chain = prompt | calculator_llm
 
-        if condition_type == 'if':
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", 
-                 "You are an execution analysis expert that calculates the number of times a conditional statement will be entered, given the its conditional logic and the range of values that the variables use in the conditional logic statement could take.\n"
-                 "The conditional statement and it's logic is provided as a source code snippet, with the range of values of its dependent variables provided as a comment on the lines above the loop statement.\n"
-                ),
-                ("human",
-                 "For the following loop in C++:\n"
-                 "{source_code_snippet}\n\n"
-                 "Explain the following:\n"
-                 "1) Create a mathematical formula that calculates the number of iterations the loop will perform for any given input variables within the supplied ranges.\n"
-                 "2) Create a mathematical formula that sums the total number of iterations performed for all valid input variables within the supplied ranges.\n"
-                 "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of loop iterations executed by all the valid input variables within the supplied ranges.\n"
-                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the loop will never execute.\n"
-                "The mathematical formulas and reasoning behind the calculations should be provided in the num_executions_explanation field of the tool call.\n"
-                 )
-            ])
-        elif condition_type == 'for':
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", 
-                 "You are an execution analysis expert that calculates the number of times a conditional loop will be executed, given the loop's conditional logic statement and the range of all possible values that the variables use in the conditional logic statement.\n"
-                 "The loop and it's logic is provided as a source code snippet, and the range of values of its variables is provided as a comment on the lines above the conditional logic statement.\n"
-                ),
-                ("human",
-                 "For the following conditional statement in C++:\n"
-                 "{source_code_snippet}\n\n"
-                 "Explain the following:\n"
-                 "1) Create a mathematical formula that calculates the number of times the statement will be executed for any given input variables within the supplied ranges.\n"
-                 "2) Create a mathematical formula that sums the total number of executions performed for all valid input variables within the supplied ranges.\n"
-                 "3) Apply and analytically evaluate the formulas (1) and (2) such that we arrive at one total sum value representing the total number of executions from all the valid input variables within the supplied ranges.\n"
-                "At each step, show your work. Return the final sum as an integer using NumExecutions num_executions. Use the value of -1 if unable to calculate an exact integer. Use a value of 0 if the conditional will never execute.\n"
-                "The mathematical formulas and reasoning behind the calculations should be provided in the num_executions_explanation field of the tool call.\n"
-                 )
-            ])
-        else:
-            raise ValueError(f"Unsupported WDP classification for number of executions calculation: {condition_type}. Supported classifications are: 'if', 'for'.")
+    inputs = {
+        "source_code_snippet": wdp.source_code,
+    }
 
-        chain = prompt | calculator_llm
+    result = chain.invoke(inputs)
 
-        inputs = {
-            "source_code_snippet": wdp.source_code,
-        }
+    num_executions = result.num_executions
 
-        result = chain.invoke(inputs)
+    print("\n")
+    print(f"\t\t [{processing_idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions}]") 
+    print("\n")
 
-        num_executions = result.num_executions
-
-        print("\n")
-        print(f"\t\t [{idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions}]") 
-        print("\n")
-
-        calculated_executions.append(result)
+    new_executions = state["wdps_num_executions"] + [result]
 
     print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
 
-    print("wdps_num_executions:", calculated_executions)
+    return {"wdps_num_executions": new_executions, 
+            "wdp_processing_index": processing_idx + 1}
 
-    return {"wdps_num_executions": calculated_executions}
+
+def wdp_num_executions_looper(state: KernelAnalysisState):
+    if state["wdp_processing_index"] < len(state["wdps_list"]):
+        return "continue"
+    else:
+        return "end"
 
 
 
