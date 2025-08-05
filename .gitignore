@@ -49,4 +49,4 @@ analysis/offload
 */.langgraph_api
 *.env
 qdecomp-langgraph-studio/real_codes/*
-qdecomp-langgraph-studio/kernel-survey/*.tree
+qdecomp-langgraph-studio/kernel-survey/tree-files/*.tree
