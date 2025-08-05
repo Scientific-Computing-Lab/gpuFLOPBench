@@ -84,10 +84,10 @@ workflow.add_conditional_edges(source="snippet_concretization_checker_5a",
 
 #workflow.add_edge("snippet_concretization_checker_5a", "kernel_warp_divergence_annotator_6")
 
-#workflow.add_edge([
-#    "kernel_warp_divergence_annotator_6",
+workflow.add_edge([
+    "kernel_warp_divergence_annotator_6",
 #    #"snippet_concretization_checker_5a"
-#    ],  "kernel_wdp_variables_annotator_7")
+    ],  "kernel_wdp_variables_annotator_7")
 
 
 workflow.add_edge([
@@ -100,8 +100,8 @@ workflow.add_edge("kernel_num_ops_annotator_8", "num_ops_checker_8a")
 workflow.add_conditional_edges(source="num_ops_checker_8a", 
                                path=route_num_ops_annotation_status_edge,
                                path_map={
-                                      #"ACCEPT": "wdp_num_execution_calculations_7b",
-                                      "ACCEPT": "kernel_wdp_variables_annotator_7",
+                                      "ACCEPT": "wdp_num_execution_calculations_7b",
+                                      #"ACCEPT": "kernel_wdp_variables_annotator_7",
                                       "REJECT": "kernel_num_ops_annotator_8"
                                },)
 
