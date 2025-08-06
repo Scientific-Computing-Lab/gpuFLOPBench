@@ -59,6 +59,6 @@ def get_query_cost(response, verbose: bool = False):
         print("Input tokens for this query:", input_tokens)
         print("Output tokens for this query:", output_tokens)
 
-    return {"input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_cost": io_cost}
+    return {"input_tokens": [input_tokens],
+            "output_tokens": [output_tokens],
+            "total_cost": [io_cost]}

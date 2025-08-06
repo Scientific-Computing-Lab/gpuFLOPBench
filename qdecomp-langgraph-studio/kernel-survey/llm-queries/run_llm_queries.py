@@ -10,6 +10,7 @@ from .my_agent.agent import graph
 from .my_agent.utils.dataset import df 
 import os
 import time
+import traceback
 
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
@@ -28,15 +29,14 @@ def main():
 
     # --- Restart functionality: Load existing results if output file exists ---
     existing_results_df = None
+    csv_headers = None
     if os.path.exists(args.outfile):
         try:
             existing_results_df = pd.read_csv(args.outfile, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+            csv_headers = existing_results_df.columns.tolist()
         except pd.errors.EmptyDataError:
             print(f"Warning: Output file '{args.outfile}' is empty. Starting fresh.")
             existing_results_df = pd.DataFrame() # Start with an empty dataframe
-    else:
-        # Create file with header if it doesn't exist to enable appending
-        pd.DataFrame().to_csv(args.outfile, index=False)
 
 
     # --- Confirmation before starting ---
@@ -44,10 +44,12 @@ def main():
     total_runs = total_kernels * args.numTrials
     completed_runs = 0
     outfile_exists = os.path.exists(args.outfile)
+    total_cost = 0.0
 
     if outfile_exists and existing_results_df is not None and not existing_results_df.empty:
         # Count only successful runs (where error is NaN)
         completed_runs = existing_results_df[existing_results_df['error'].isna()].shape[0]
+        total_cost = existing_results_df['total_cost'].apply(sum).sum()
 
     remaining_runs = total_runs - completed_runs
 
@@ -64,6 +66,7 @@ def main():
     print(f"    Total Runs: {total_runs}")
     print(f"Completed Runs: {completed_runs} ({completed_runs / total_runs * 100:.2f}%)")
     print(f"Remaining Runs: {remaining_runs} ({remaining_runs / total_runs * 100:.2f}%)")
+    print(f" Current Spend: ${total_cost:.2f}")
     print("---------------------------------")
     
     if remaining_runs > 0:
@@ -87,13 +90,16 @@ def main():
                     (existing_results_df['top_p'] == args.top_p) &
                     (existing_results_df['temp'] == args.temp)]
 
-                assert existing_sample.shape[0] <= 1, f"Multiple entries found for {combined_name} [trial: {trial}]. Please check the dataset."
+                num_entries = existing_sample.shape[0]
+                num_error_entries = existing_sample['error'].notna().sum()
+                num_success_entries = existing_sample['error'].isna().sum()
 
-                if existing_sample.shape[0] == 1:
-                    existing_sample_is_successful = existing_sample['error'].isna().all()
-                    if existing_sample_is_successful:
-                        print(f"Skipping Sample: {combined_name} [trial: {trial}] - Already processed successfully.")
-                        continue
+                assert num_entries == (num_error_entries + num_success_entries), "Data inconsistency detected in existing results."
+
+                if num_success_entries >= 1:
+                    print(f"\nSkipping Sample: {combined_name} [trial: {trial}] - Already processed successfully.\n")
+                    continue
+                
 
             config = {
                 "configurable": {
@@ -130,8 +136,11 @@ def main():
             except Exception as e:
                 end_time = time.time()
                 print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}")
+                traceback.print_exc()
                 # Optionally add a placeholder for the failed row
-                error_result = {
+                # Create a placeholder row with all expected columns
+                error_result = {key: None for key in csv_headers}
+                error_result.update({
                     'trial': trial,
                     'combined_name': combined_name, 
                     'modelName': args.modelName,
@@ -139,7 +148,7 @@ def main():
                     'temp': args.temp,
                     'totalQueryTime': end_time - start_time,
                     'error': str(e), 
-                }
+                })
                 pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
 

@@ -154,6 +154,9 @@ class KernelAnalysisState(TypedDict, total=False):
     dp_flop_perc_diff: float
 
     # Token usage tracking
-    input_tokens: Annotated[int, operator.add]
-    output_tokens: Annotated[int, operator.add]
-    total_cost: Annotated[float, operator.add]
+    #input_tokens: Annotated[int, operator.add]
+    #output_tokens: Annotated[int, operator.add]
+    #total_cost: Annotated[float, operator.add]
+    input_tokens: Annotated[List[int], operator.add]
+    output_tokens: Annotated[List[int], operator.add]
+    total_cost: Annotated[List[float], operator.add]

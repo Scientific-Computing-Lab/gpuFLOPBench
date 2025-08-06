@@ -56,7 +56,7 @@ def calc_total_threads(gridSz:str, blockSz:str):
 
 
 def get_input_problem(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     target_name = config.get("configurable", {}).get("input_problem", "(ace-cuda, boundaryConditionsU)")
 
@@ -122,7 +122,7 @@ concretization_rules = """1) When a value is being concretized/replaced, make su
 9) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"""
 
 def src_input_args_concretizer(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     # if we have some feedback messages, let's use them
     if len(state["step1_messages"]) != 0:
@@ -204,7 +204,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
 # we're going to force this node to give us structured output (i.e: a tool call)
 def concretization_checker(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker, include_raw=True)
 
@@ -264,7 +264,7 @@ with open(os.path.join(example_codes_dir, 'step2_example_after.cu'), 'r') as fil
 
 
 def src_single_kernel_execution_modifier(state: KernelAnalysisState, config): 
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     if len(state["step2_messages"]) != 0:
         msg_history = state["step2_messages"]
@@ -343,7 +343,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
 
 def single_kernel_execution_checker(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     single_source_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(SingleKernelState, include_raw=True)
 
@@ -392,7 +392,7 @@ def route_single_kernel_source_status_edge(state: KernelAnalysisState):
 
 
 def first_kernel_invocation_snippet_extractor(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -472,7 +472,7 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
 
 
 def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -524,7 +524,7 @@ with open(os.path.join(example_codes_dir, 'step5_example_after.cu'), 'r') as fil
     step5_example_after = file.read()
 
 snippet_concretization_rules = """1) If a value is derived from other value(s), also replace it with the hard-coded value. 
-2) Make sure all possible variables and arguments are made explicit using the provided hard-coded values and their descriptions.
+2) Make sure all possible variables and arguments are made explicit using the provided hard-coded values and their descriptions, keep a comment on the line above the concretized value indicating the original line that is made concrete.
 3) If the `auto` keyword is used, replace it with the correct concrete type.
 4) Be sure to replace any blockDim and gridDim variables (e.g: `blockDim.x` or `gridDim.y`) with their concrete values, as well as any other variables that are derived from the kernel invocation arguments.
 5) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"
@@ -535,7 +535,7 @@ snippet_concretization_rules = """1) If a value is derived from other value(s), 
 10) Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"""
 
 def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     # if we have some feedback messages, let's use them
     if len(state["step5_messages"]) != 0:
@@ -617,7 +617,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
 # we're going to force this node to give us structured output (i.e: a tool call)
 def snippet_concretization_checker(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker, include_raw=True)
 
@@ -672,7 +672,7 @@ def route_snippet_concretization_status_edge(state: KernelAnalysisState):
 
 # step 6
 def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -738,7 +738,7 @@ with open(os.path.join(example_codes_dir, 'step7_example_after.cu'), 'r') as fil
     step7_example_after = file.read()
 
 def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -797,7 +797,7 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
 
 
 def wdp_extractor(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     """Extracts the warp divergence points as a list from the annotated kernel source code."""
     wdp_extractor_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(DivergencePointsList, include_raw=True)
@@ -876,9 +876,12 @@ if (1)```\n\n"""
 def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     """ Calculates the number of times each warp divergence point (WDP) will be executed based on mathematical summation logic."""
 
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions, include_raw=True)
+
+    if verbose:
+        print("\t\t Current WDP Processing Index: ", state["wdp_processing_index"])
 
     processing_idx = state["wdp_processing_index"]
     wdp = state["wdps_list"][processing_idx]
@@ -947,7 +950,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
 
     if verbose:
         print("\n")
-        print(f"\t\t [{processing_idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
+        print(f"\t\t [{processing_idx}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
         print("\n")
 
     new_executions = state["wdps_num_executions"] + [num_executions]
@@ -957,7 +960,7 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
             print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
 
     return updated_costs | {"wdps_num_executions": new_executions, 
-            "wdp_processing_index": processing_idx + 1}
+                            "wdp_processing_index": processing_idx+1}
 
 
 def wdp_num_executions_looper(state: KernelAnalysisState):
@@ -992,7 +995,7 @@ kernel_num_ops_rules = """
 8) DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations.\n\n"""
 
 def kernel_num_ops_annotator(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     # if we have some feedback messages, let's use them
     if len(state["step8_messages"]) != 0:
@@ -1066,7 +1069,7 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
 
 def num_ops_checker(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     num_ops_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumOpsState, include_raw=True)
 
@@ -1115,7 +1118,7 @@ def route_num_ops_annotation_status_edge(state: KernelAnalysisState) -> Literal[
 
 
 def kernel_ops_summarizer(state: KernelAnalysisState, config):
-    verbose = config.get("verbose_printing", False)
+    verbose = config.get("configurable", {}).get("verbose_printing", False)
 
     wdps_list = state["wdps_list"]
 
@@ -1195,9 +1198,9 @@ def print_summary(state: KernelAnalysisState):
 
     print("\n------- Execution Summary -------")
     print(f"Combined Name: {state['combined_name']}\n")
-    print(f"Input Tokens: {input_tokens}")
-    print(f"Output Tokens: {output_tokens}")
-    print(f"Total Cost: ${total_cost:.6f}")
+    print(f"Input Tokens: {sum(input_tokens)}")
+    print(f"Output Tokens: {sum(output_tokens)}")
+    print(f"Total Cost: ${sum(total_cost):.6f}")
 
     print(f"Empirical SP-FLOP Count: {state['empirical_sp_flop_count']}")
     print(f"Empirical DP-FLOP Count: {state['empirical_dp_flop_count']}\n")
