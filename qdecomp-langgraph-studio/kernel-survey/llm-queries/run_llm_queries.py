@@ -12,6 +12,16 @@ import os
 import time
 import traceback
 import ast
+import signal
+
+class TimeoutException(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutException("QUERY TIMEOUT EVENT")
+
+# Register the signal handler for SIGALRM -- for our 10 minutes timeout
+signal.signal(signal.SIGALRM, timeout_handler)
 
 def parse_and_sum_cost(cost_val):
     """Safely parse a string representation of a list and sum its elements."""
@@ -54,6 +64,8 @@ def main():
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
+    parser.add_argument("--timeout", type=int, default=600, help="Timeout for each query in seconds. Default is 600 (10 minutes).")
+
     args = parser.parse_args()
 
     # --- Create output filename if not provided ---
@@ -156,7 +168,10 @@ def main():
 
             start_time = time.time()
             try:
+                signal.alarm(args.timeout)  # Set the alarm for the specified timeout
+                # Run the graph workflow
                 result = graph.invoke({}, config=config)
+                signal.alarm(0)  # Disable the alarm
                 end_time = time.time()
                 # Add trial and combined_name to the result for saving
                 result['trial'] = trial
@@ -172,6 +187,7 @@ def main():
                 pd.DataFrame([result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
             except Exception as e:
+                signal.alarm(0) # Make sure to disable the alarm if we hit an exception
                 end_time = time.time()
                 print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}")
                 traceback.print_exc()

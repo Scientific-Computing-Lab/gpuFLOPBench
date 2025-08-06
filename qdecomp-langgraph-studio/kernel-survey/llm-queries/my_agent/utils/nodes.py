@@ -1231,4 +1231,4 @@ def print_summary(state: KernelAnalysisState):
 
     print("-------------------------------")
 
-    return state
+    return {}
