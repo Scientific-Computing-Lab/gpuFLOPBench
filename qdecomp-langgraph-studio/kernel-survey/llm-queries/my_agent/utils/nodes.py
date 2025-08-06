@@ -1,4 +1,4 @@
-from utils.state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState, NumOpsState, FLOPCounts, NumExecutions
+from .state import KernelAnalysisState, WarpDivergencePoint, DivergencePointsList, ConcretizationChecker, SingleKernelState, NumOpsState, FLOPCounts, NumExecutions
 
 from typing_extensions import TypedDict, List, Literal
 from pydantic import BaseModel, Field
@@ -10,18 +10,18 @@ from langchain_core.runnables import ConfigurableField
 
 from .dataset import df
 
-from utils.preprocessing.args_propagator import *
-from utils.preprocessing.source_reorganizer import *
-from utils.preprocessing.prune_irrelevant_code import *
+from .preprocessing.args_propagator import *
+from .preprocessing.source_reorganizer import *
+from .preprocessing.prune_irrelevant_code import *
 
-from utils.callbacks import get_query_cost 
+from .callbacks import get_query_cost 
 
 import os
 
 # The ids of the configurables are from the Configuration class in configuration.py
 # This is needed to allow us to change the variables at runtime
 llm = ChatOpenAI(
-  openai_api_key="",
+  openai_api_key=os.getenv("OPENAI_API_KEY"),
   openai_api_base="https://openrouter.ai/api/v1",
   temperature=0.2,
   top_p=0.1,
@@ -56,6 +56,7 @@ def calc_total_threads(gridSz:str, blockSz:str):
 
 
 def get_input_problem(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     target_name = config.get("configurable", {}).get("input_problem", "(ace-cuda, boundaryConditionsU)")
 
@@ -63,9 +64,9 @@ def get_input_problem(state: KernelAnalysisState, config):
 
     assert row is not None, f"Target problem '{target_name}' not found in the dataset."
 
-    exeArgs_list = [f"./{row['target']}"] + row['exeArgs'].split(' ')
+    reorganized_source = reorganize_source(row['source_code'], verbose)
 
-    reorganized_source = reorganize_source(row['source_code'])
+    #exeArgs_list = [f"./{row['target']}"] + row['exeArgs'].split(' ')
 
     # print the current working directory
     #with open(f'./real_codes/{target_name}.cu', 'w') as file:
@@ -77,9 +78,10 @@ def get_input_problem(state: KernelAnalysisState, config):
     #propagated = propagate_argv_in_combined(reorganized_source, exeArgs_list)
 
     #print(exeArgs_list)
-    #print("---------- BEGIN STEP 0: Input ARGV Propagation ----------")
-    #print(propagated)
-    #print("---------- END STEP 0: Input ARGV Propagation ----------")
+    if verbose:
+        print("---------- BEGIN STEP 0: Input ARGV Propagation ----------")
+        print(reorganized_source)
+        print("---------- END STEP 0: Input ARGV Propagation ----------")
 
     return {'source_code' : reorganized_source, 
             'combined_name' : row['combined_name'],
@@ -100,10 +102,13 @@ def get_input_problem(state: KernelAnalysisState, config):
 
 
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
 
-with open('./example_codes/step1_example_before.cu', 'r') as file:
+example_codes_dir = os.path.join(script_dir, '..', '..', '..', '..', 'example_codes')
+
+with open(os.path.join(example_codes_dir, 'step1_example_before.cu'), 'r') as file:
         step1_example_before = file.read()
-with open('./example_codes/step1_example_after.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step1_example_after.cu'), 'r') as file:
         step1_example_after = file.read()
 
 concretization_rules = """1) When a value is being concretized/replaced, make sure to comment out the original line that is being replaced with the new concrete value, and add the new line below the original commented code.
@@ -117,6 +122,7 @@ concretization_rules = """1) When a value is being concretized/replaced, make su
 9) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"""
 
 def src_input_args_concretizer(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     # if we have some feedback messages, let's use them
     if len(state["step1_messages"]) != 0:
@@ -139,7 +145,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
         updated_source = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
         return updated_costs | {"src_concretized_input_args": updated_source,
                 "step1_messages": error_msg.format_messages(**inputs) + [result]}
@@ -180,13 +186,14 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
         updated_source = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
-        #print("\n\n\n")
-        #print("---------- BEGIN STEP 1: Source Code Concretization ----------")
-        #print(f"\n{updated_source}\n")
-        #print("---------- END STEP 1: Source Code Concretization ----------")
-        #print("\n\n\n")
+        if verbose:
+            print("\n\n\n")
+            print("---------- BEGIN STEP 1: Source Code Concretization ----------")
+            print(f"\n{updated_source}\n")
+            print("---------- END STEP 1: Source Code Concretization ----------")
+            print("\n\n\n")
 
         return updated_costs | {"src_concretized_input_args": updated_source,
                 "step1_messages": prompt.format_messages(**inputs) + [result]}
@@ -197,6 +204,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
 # we're going to force this node to give us structured output (i.e: a tool call)
 def concretization_checker(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker, include_raw=True)
 
@@ -225,8 +233,8 @@ def concretization_checker(state: KernelAnalysisState, config):
     })
 
     resultState = result['parsed']
-        
-    updated_costs = get_query_cost(result['raw'])
+
+    updated_costs = get_query_cost(result['raw'], verbose)
 
     return updated_costs | {"concretizationState": resultState}
 
@@ -248,14 +256,15 @@ def route_concretization_status_edge(state: KernelAnalysisState):
 
 
 
-with open('./example_codes/step2_example_before.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step2_example_before.cu'), 'r') as file:
     step2_example_before = file.read()
 
-with open('./example_codes/step2_example_after.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step2_example_after.cu'), 'r') as file:
     step2_example_after = file.read()
 
 
 def src_single_kernel_execution_modifier(state: KernelAnalysisState, config): 
+    verbose = config.get("verbose_printing", False)
 
     if len(state["step2_messages"]) != 0:
         msg_history = state["step2_messages"]
@@ -277,7 +286,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
         updated_source = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
         return updated_costs | {"src_single_kernel_execution": updated_source,
                 "step2_messages": error_msg.format_messages(**inputs) + [result]}
@@ -317,13 +326,14 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
         single_kernel_source = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
-        #print("\n\n\n")
-        #print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------")
-        #print(f"\n{single_kernel_source}\n")
-        #print("---------- END STEP 2: Single Kernel Execution Modification ----------")
-        #print("\n\n\n")
+        if verbose:
+            print("\n\n\n")
+            print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------")
+            print(f"\n{single_kernel_source}\n")
+            print("---------- END STEP 2: Single Kernel Execution Modification ----------")
+            print("\n\n\n")
 
         return updated_costs | {"src_single_kernel_execution": single_kernel_source, 
                 "step2_messages": prompt.format_messages(**inputs) + [result]}
@@ -333,6 +343,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
 
 def single_kernel_execution_checker(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     single_source_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(SingleKernelState, include_raw=True)
 
@@ -358,7 +369,7 @@ def single_kernel_execution_checker(state: KernelAnalysisState, config):
 
     resultState = result['parsed']
 
-    updated_costs = get_query_cost(result['raw'])
+    updated_costs = get_query_cost(result['raw'], verbose)
 
     return updated_costs | {"srcSingleKernelState": resultState}
 
@@ -381,6 +392,7 @@ def route_single_kernel_source_status_edge(state: KernelAnalysisState):
 
 
 def first_kernel_invocation_snippet_extractor(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -444,13 +456,14 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
 
     first_kernel_invocation = result.content
 
-    updated_costs = get_query_cost(result)
+    updated_costs = get_query_cost(result, verbose)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 3: First Kernel Invocation Snippet Extraction ----------")
-    print(f"\n{first_kernel_invocation}\n")
-    print("---------- END STEP 3: First Kernel Invocation Snippet Extraction ----------")
-    print("\n\n\n")
+    if verbose:
+        print("\n\n\n")
+        print("---------- BEGIN STEP 3: First Kernel Invocation Snippet Extraction ----------")
+        print(f"\n{first_kernel_invocation}\n")
+        print("---------- END STEP 3: First Kernel Invocation Snippet Extraction ----------")
+        print("\n\n\n")
 
     return updated_costs | {"snippet_first_kernel_invocation": first_kernel_invocation}
 
@@ -459,6 +472,7 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
 
 
 def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -488,13 +502,14 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
 
     kernel_source_snippet = result.content
 
-    updated_costs = get_query_cost(result)
+    updated_costs = get_query_cost(result, verbose)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 4: Kernel Source Snippet Extraction ----------")
-    print(f"\n{kernel_source_snippet}\n")
-    print("---------- END STEP 4: Kernel Source Snippet Extraction ----------")
-    print("\n\n\n")
+    if verbose:
+        print("\n\n\n")
+        print("---------- BEGIN STEP 4: Kernel Source Snippet Extraction ----------")
+        print(f"\n{kernel_source_snippet}\n")
+        print("---------- END STEP 4: Kernel Source Snippet Extraction ----------")
+        print("\n\n\n")
 
     return updated_costs | {"snippet_kernel_src": kernel_source_snippet}
 
@@ -502,10 +517,10 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
 
 
 
-with open('./example_codes/step5_example_before.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step5_example_before.cu'), 'r') as file:
     step5_example_before = file.read()
 
-with open('./example_codes/step5_example_after.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step5_example_after.cu'), 'r') as file:
     step5_example_after = file.read()
 
 snippet_concretization_rules = """1) If a value is derived from other value(s), also replace it with the hard-coded value. 
@@ -520,6 +535,7 @@ snippet_concretization_rules = """1) If a value is derived from other value(s), 
 10) Place a comment on the line below the concretized expression indicating the single value it evaluates to with an additional comment of `// Calculated value`.\n"""
 
 def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     # if we have some feedback messages, let's use them
     if len(state["step5_messages"]) != 0:
@@ -542,7 +558,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
         snippet_kernel_src_concretized_values = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
         return updated_costs | {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
                 "step5_messages": error_msg.format_messages(**inputs) + [result]}
@@ -586,13 +602,14 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
         snippet_kernel_src_concretized_values = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
-        #print("\n\n\n")
-        #print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------")
-        #print(f"\n{snippet_kernel_src_concretized_values}\n")
-        #print("---------- END STEP 5: Kernel Source Code Concretization ----------")
-        #print("\n\n\n")
+        if verbose:
+            print("\n\n\n")
+            print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------")
+            print(f"\n{snippet_kernel_src_concretized_values}\n")
+            print("---------- END STEP 5: Kernel Source Code Concretization ----------")
+            print("\n\n\n")
 
         return updated_costs | {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
                 "step5_messages": prompt.format_messages(**inputs) + [result]}
@@ -600,6 +617,7 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
 # we're going to force this node to give us structured output (i.e: a tool call)
 def snippet_concretization_checker(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker, include_raw=True)
 
@@ -628,7 +646,7 @@ def snippet_concretization_checker(state: KernelAnalysisState, config):
 
     resultState = result['parsed']
 
-    updated_costs = get_query_cost(result['raw'])
+    updated_costs = get_query_cost(result['raw'], verbose)
 
     return updated_costs | {"snippetConcretizationState": resultState}
 
@@ -654,6 +672,7 @@ def route_snippet_concretization_status_edge(state: KernelAnalysisState):
 
 # step 6
 def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -698,13 +717,14 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
 
     result = chain.invoke(inputs)
     kernel_annotated_warp_divergence = result.content
-    updated_costs = get_query_cost(result)
+    updated_costs = get_query_cost(result, verbose)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 6: Kernel Warp Divergence Annotation ----------")
-    print(f"\n{kernel_annotated_warp_divergence}\n")
-    print("---------- END STEP 6: Kernel Warp Divergence Annotation ----------")
-    print("\n\n\n")
+    if verbose:
+        print("\n\n\n")
+        print("---------- BEGIN STEP 6: Kernel Warp Divergence Annotation ----------")
+        print(f"\n{kernel_annotated_warp_divergence}\n")
+        print("---------- END STEP 6: Kernel Warp Divergence Annotation ----------")
+        print("\n\n\n")
 
     return updated_costs | {"kernel_annotated_warp_divergence": kernel_annotated_warp_divergence}
 
@@ -712,12 +732,13 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
 
 
 
-with open('./example_codes/step7_example_before.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step7_example_before.cu'), 'r') as file:
     step7_example_before = file.read()
-with open('./example_codes/step7_example_after.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step7_example_after.cu'), 'r') as file:
     step7_example_after = file.read()
 
 def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -755,13 +776,14 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
 
     kernel_annotated_WDPs = result.content
 
-    updated_costs = get_query_cost(result)
+    updated_costs = get_query_cost(result, verbose)
 
-    #print("\n\n\n")
-    #print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
-    #print(f"\n{kernel_annotated_WDPs}\n")
-    #print("---------- END STEP 7: Kernel WDP Annotation ----------")
-    #print("\n\n\n")
+    if verbose:
+        print("\n\n\n")
+        print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
+        print(f"\n{kernel_annotated_WDPs}\n")
+        print("---------- END STEP 7: Kernel WDP Annotation ----------")
+        print("\n\n\n")
 
     return updated_costs | {"kernel_annotated_WDPs": kernel_annotated_WDPs}
 
@@ -775,6 +797,7 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
 
 
 def wdp_extractor(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     """Extracts the warp divergence points as a list from the annotated kernel source code."""
     wdp_extractor_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(DivergencePointsList, include_raw=True)
@@ -833,14 +856,15 @@ if (1)```\n\n"""
 
     wdps = result['parsed'].warp_divergence_points
 
-    updated_costs = get_query_cost(result['raw'])
+    updated_costs = get_query_cost(result['raw'], verbose)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 7a: WDP Extraction ----------")
-    for wdp in wdps:
-        print(f"\nclassification: [{wdp.classification}]\nsource_code:[\n{wdp.source_code}]\n\n")
-    print("---------- END STEP 7a: WDP Extraction ----------")
-    print("\n\n\n")
+    if verbose:
+        print("\n\n\n")
+        print("---------- BEGIN STEP 7a: WDP Extraction ----------")
+        for wdp in wdps:
+            print(f"\nclassification: [{wdp.classification}]\nsource_code:[\n{wdp.source_code}]\n\n")
+        print("---------- END STEP 7a: WDP Extraction ----------")
+        print("\n\n\n")
 
     return updated_costs | {"wdps_list": wdps, "wdp_processing_index": 0, "wdps_num_executions": []}
 
@@ -852,17 +876,20 @@ if (1)```\n\n"""
 def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     """ Calculates the number of times each warp divergence point (WDP) will be executed based on mathematical summation logic."""
 
+    verbose = config.get("verbose_printing", False)
+
     calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions, include_raw=True)
 
     processing_idx = state["wdp_processing_index"]
     wdp = state["wdps_list"][processing_idx]
 
-    print("\n\n\n")
-    print(f"Processing WDP at index: {processing_idx}")
-    print(wdp)
-    print("\n\n\n")
-
-    print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------")
+    if verbose:
+        if processing_idx == 0:
+            print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------")
+        print("\n\n\n")
+        print(f"Processing WDP at index: {processing_idx}")
+        print(wdp)
+        print("\n\n\n")
 
     condition_type = {'if': 'if', 'else-if': 'if', 'for': 'for', 'while': 'for', 'do-while': 'for', 'ternary': 'if'}.get(wdp.classification, None)
 
@@ -916,15 +943,18 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
 
     num_executions = result['parsed']
 
-    updated_costs = get_query_cost(result['raw'])
+    updated_costs = get_query_cost(result['raw'], verbose)
 
-    print("\n")
-    print(f"\t\t [{processing_idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
-    print("\n")
+    if verbose:
+        print("\n")
+        print(f"\t\t [{processing_idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
+        print("\n")
 
     new_executions = state["wdps_num_executions"] + [num_executions]
 
-    print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
+    if verbose:
+        if processing_idx+1 == len(state["wdps_list"]):
+            print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
 
     return updated_costs | {"wdps_num_executions": new_executions, 
             "wdp_processing_index": processing_idx + 1}
@@ -948,7 +978,7 @@ def wdp_num_executions_looper(state: KernelAnalysisState):
 #    step8_example_before = file.read()
 #with open('./example_codes/step8_example_after.cu', 'r') as file:
 #    step8_example_after = file.read()
-with open('./example_codes/step8_examples.cu', 'r') as file:
+with open(os.path.join(example_codes_dir, 'step8_examples.cu'), 'r') as file:
     step8_examples = file.read()
 
 kernel_num_ops_rules = """
@@ -962,6 +992,7 @@ kernel_num_ops_rules = """
 8) DO NOT consider the number of threads during execution, instead assume a single thread of execution for the purpose of counting operations.\n\n"""
 
 def kernel_num_ops_annotator(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     # if we have some feedback messages, let's use them
     if len(state["step8_messages"]) != 0:
@@ -984,7 +1015,7 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
         kernel_annotated_num_ops = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
         return updated_costs | {"kernel_annotated_num_ops": kernel_annotated_num_ops,
                 "step8_messages": error_msg.format_messages(**inputs) + [result]}
@@ -1021,19 +1052,21 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
         kernel_annotated_num_ops = result.content
 
-        updated_costs = get_query_cost(result)
+        updated_costs = get_query_cost(result, verbose)
 
-        #print("\n\n\n")
-        #print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------")
-        #print(f"\n{kernel_annotated_num_ops}\n")
-        #print("---------- END STEP 8: Kernel Number of Operations Annotation ----------")
-        #print("\n\n\n")
+        if verbose:
+            print("\n\n\n")
+            print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------")
+            print(f"\n{kernel_annotated_num_ops}\n")
+            print("---------- END STEP 8: Kernel Number of Operations Annotation ----------")
+            print("\n\n\n")
 
         return updated_costs | {"kernel_annotated_num_ops": kernel_annotated_num_ops,
                 "step8_messages": prompt.format_messages(**inputs) + [result]}
 
 
 def num_ops_checker(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     num_ops_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumOpsState, include_raw=True)
 
@@ -1063,7 +1096,7 @@ def num_ops_checker(state: KernelAnalysisState, config):
 
     resultState = result['parsed']
 
-    updated_costs = get_query_cost(result['raw'])
+    updated_costs = get_query_cost(result['raw'], verbose)
 
     return updated_costs | {"numOpsAnnotationState": resultState}
 
@@ -1082,6 +1115,7 @@ def route_num_ops_annotation_status_edge(state: KernelAnalysisState) -> Literal[
 
 
 def kernel_ops_summarizer(state: KernelAnalysisState, config):
+    verbose = config.get("verbose_printing", False)
 
     wdps_list = state["wdps_list"]
 
@@ -1097,7 +1131,8 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
         else:
             wdps_string += f"\n{wdp.source_code.strip()}\nNumber of ({wdp.classification}) executions: {num_executions.num_executions}\n\n"
 
-    print("WDPS STRING", wdps_string)
+    if verbose:
+        print("WDPS STRING", wdps_string)
 
     flop_counts_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts, include_raw=True)
 
@@ -1132,13 +1167,14 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
 
     summed_kernel_ops = result['parsed']
 
-    updated_costs = get_query_cost(result['raw'])
+    updated_costs = get_query_cost(result['raw'], verbose)
 
-    print("\n\n\n")
-    print("---------- BEGIN STEP 9: Kernel Operations Summary ----------")
-    print(f"\n{summed_kernel_ops}\n")
-    print("---------- END STEP 9: Kernel Operations Summary ----------")
-    print("\n\n\n")
+    if verbose:
+        print("\n\n\n")
+        print("---------- BEGIN STEP 9: Kernel Operations Summary ----------")
+        print(f"\n{summed_kernel_ops}\n")
+        print("---------- END STEP 9: Kernel Operations Summary ----------")
+        print("\n\n\n")
 
     empirical_sp_flop_count = state["empirical_sp_flop_count"]
     empirical_dp_flop_count = state["empirical_dp_flop_count"]
@@ -1157,10 +1193,28 @@ def print_summary(state: KernelAnalysisState):
     output_tokens = state.get("output_tokens", 0)
     total_cost = state.get("total_cost", 0.0)
 
-    print("\n--- Execution Summary ---")
+    print("\n------- Execution Summary -------")
+    print(f"Combined Name: {state['combined_name']}\n")
     print(f"Input Tokens: {input_tokens}")
     print(f"Output Tokens: {output_tokens}")
     print(f"Total Cost: ${total_cost:.6f}")
-    print("-----------------------")
+
+    print(f"Empirical SP-FLOP Count: {state['empirical_sp_flop_count']}")
+    print(f"Empirical DP-FLOP Count: {state['empirical_dp_flop_count']}\n")
+
+    print(f"Summed SP-FLOP Count: {state['summed_kernel_ops'].sp_flop_count}")
+    print(f"Summed DP-FLOP Count: {state['summed_kernel_ops'].dp_flop_count}\n")
+
+    print(f"SP-FLOP Difference: {state['sp_flop_diff']} ({state['sp_flop_perc_diff']:.2f}%)")
+    print(f"DP-FLOP Difference: {state['dp_flop_diff']} ({state['dp_flop_perc_diff']:.2f}%)\n")
+
+    print(f"SP-FLOP Percent Difference: {state['sp_flop_perc_diff']:.2f}%")
+    print(f"DP-FLOP Percent Difference: {state['dp_flop_perc_diff']:.2f}%\n")
+
+    print("Final Reasoning and Explanation for FLOP Counts:")
+    print(f"SP-FLOP Explanation: {state['summed_kernel_ops'].sp_flop_explanation}\n\n")
+    print(f"DP-FLOP Explanation: {state['summed_kernel_ops'].dp_flop_explanation}\n")
+
+    print("-------------------------------")
 
     return state

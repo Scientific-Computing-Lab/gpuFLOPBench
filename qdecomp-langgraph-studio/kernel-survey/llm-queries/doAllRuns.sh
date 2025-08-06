@@ -1,3 +1,5 @@
 #!/bin/bash
 
-python run_llm_queries.py
+pushd ../
+python -m llm-queries.run_llm_queries --verbose
+popd

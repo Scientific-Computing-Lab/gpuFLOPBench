@@ -1,15 +1,10 @@
 from typing import TypedDict, Literal
-from my_agent.utils.nodes import *
-from my_agent.utils.state import KernelAnalysisState
-from my_agent.utils.configuration import Configuration
-from my_agent.utils.nodes import print_summary, wdp_num_executions_looper, route_num_ops_annotation_status_edge, route_snippet_concretization_status_edge, route_single_kernel_source_status_edge, route_concretization_status_edge
+from .utils.nodes import *
+from .utils.state import KernelAnalysisState
+from .utils.configuration import Configuration
+from .utils.nodes import print_summary, wdp_num_executions_looper, route_num_ops_annotation_status_edge, route_snippet_concretization_status_edge, route_single_kernel_source_status_edge, route_concretization_status_edge
 
 from langgraph.graph import StateGraph, END
-
-# please create a file called .openrouter-api-key in the current directory
-#with open('./.openrouter-api-key', 'r') as file:
-#    OPENROUTER_API_KEY=file.read().strip()
-#    #os.environ['OPENROUTER_API_KEY'] = OPENROUTER_API_KEY
 
 
 workflow = StateGraph(KernelAnalysisState, context_schema=Configuration)

@@ -20,6 +20,8 @@ llm_nodes = [
             "kernel_ops_summarizer_9"
 ]
 
+all_nodes = llm_nodes + ["get_input_problem_0", "print_summary"]
+
 class Configuration(BaseModel):
     temp : float = Field(default=0.2, 
                          description="The temperature to use for the LLM. Higher values make the output more random, lower values make it more deterministic.",
@@ -75,4 +77,10 @@ class Configuration(BaseModel):
         default="(ace-cuda, boundaryConditionsU)",
         description="The name of the input CUDA program to study.",
         json_schema_extra={"langgraph_nodes": ["get_input_problem_0"]},
+    )
+
+    verbose_printing: bool = Field(
+        default=False,
+        description="If True, the agent will print detailed information about each step of the analysis.",
+        json_schema_extra={"langgraph_nodes": all_nodes},
     )

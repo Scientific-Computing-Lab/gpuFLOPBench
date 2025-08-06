@@ -1,12 +1,15 @@
 
+import csv
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
 import argparse
 import pandas as pd
 from tqdm import tqdm
-from my_agent.agent import graph
-from my_agent.utils.dataset import df, target_names
-from my_agent.utils.configuration import Configuration
-from my_agent.utils.state import KernelAnalysisState
+from .my_agent.agent import graph
+from .my_agent.utils.dataset import df 
 import os
+import time
 
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
@@ -15,6 +18,7 @@ def main():
     parser.add_argument("--temp", type=float, default=0.2, help="Temperature parameter for the language model")
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
+    parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
     args = parser.parse_args()
 
     # --- Create output filename if not provided ---
@@ -26,7 +30,7 @@ def main():
     existing_results_df = None
     if os.path.exists(args.outfile):
         try:
-            existing_results_df = pd.read_csv(args.outfile)
+            existing_results_df = pd.read_csv(args.outfile, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
         except pd.errors.EmptyDataError:
             print(f"Warning: Output file '{args.outfile}' is empty. Starting fresh.")
             existing_results_df = pd.DataFrame() # Start with an empty dataframe
@@ -54,6 +58,7 @@ def main():
     print(f"     # Trials: {args.numTrials}")
     print(f"  Output File: {args.outfile}")
     print(f"  File Exists: {outfile_exists}")
+    print(f" Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
     print("---------------------------------")
     print(f" Total Kernels: {total_kernels}")
     print(f"    Total Runs: {total_runs}")
@@ -62,7 +67,7 @@ def main():
     print("---------------------------------")
     
     if remaining_runs > 0:
-        input("Press ENTER to continue...")
+        input("Press ENTER to continue...\n")
     else:
         print("All runs are already completed. Exiting.")
         return
@@ -73,52 +78,69 @@ def main():
             combined_name = row['combined_name']
 
             # --- Check if sample already processed ---
-            if existing_results_df is not None and not existing_results_df.empty:
+            if existing_results_df is not None and not existing_results_df.shape[0] == 0:
                 # Check for successful (non-error) completion
-                if ((existing_results_df['combined_name'] == combined_name) & 
+                existing_sample = existing_results_df [ 
+                    (existing_results_df['combined_name'] == combined_name) & 
                     (existing_results_df['trial'] == trial) & 
-                    (existing_results_df['error'].isna())).any():
-                    print(f"skipping sample: {combined_name} [trial: {trial}]")
-                    continue
+                    (existing_results_df['modelName'] == args.modelName) &
+                    (existing_results_df['top_p'] == args.top_p) &
+                    (existing_results_df['temp'] == args.temp)]
+
+                assert existing_sample.shape[0] <= 1, f"Multiple entries found for {combined_name} [trial: {trial}]. Please check the dataset."
+
+                if existing_sample.shape[0] == 1:
+                    existing_sample_is_successful = existing_sample['error'].isna().all()
+                    if existing_sample_is_successful:
+                        print(f"Skipping Sample: {combined_name} [trial: {trial}] - Already processed successfully.")
+                        continue
 
             config = {
                 "configurable": {
-                    #"provider_api_key": OPENROUTER_API_KEY,
+                    "provider_api_key": os.getenv("OPENAI_API_KEY"),
                     "provider_url": "https://openrouter.com/api/v1",
                     "model": args.modelName,
                     "top_p": args.top_p,
                     "temp": args.temp,
                     "input_problem": combined_name,
+                    "verbose_printing": args.verbose
                 }
             }
             
-            include_header = not os.path.exists(args.outfile) or os.path.getsize(args.outfile) == 0
 
+            include_header = ((trial == 1) and (index == 0))
+
+            start_time = time.time()
             try:
-                result = graph.invoke(None, config=config)
+                result = graph.invoke({}, config=config)
+                end_time = time.time()
                 # Add trial and combined_name to the result for saving
                 result['trial'] = trial
                 result['combined_name'] = combined_name
-                result['error'] = None # Explicitly mark as success
                 result['modelName'] = args.modelName
                 result['top_p'] = args.top_p
                 result['temp'] = args.temp
+                result['totalQueryTime'] = end_time - start_time
+                result['error'] = None  # Explicitly mark as success
 
                 # Append result to CSV
-                pd.DataFrame([result]).to_csv(args.outfile, mode='a', header=include_header, index=False)
+                # if we are adding the first row, we need to include the header
+                pd.DataFrame([result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
             except Exception as e:
+                end_time = time.time()
                 print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}")
                 # Optionally add a placeholder for the failed row
                 error_result = {
-                    'error': str(e), 
-                    'combined_name': combined_name, 
                     'trial': trial,
+                    'combined_name': combined_name, 
                     'modelName': args.modelName,
                     'top_p': args.top_p,
-                    'temp': args.temp
+                    'temp': args.temp,
+                    'totalQueryTime': end_time - start_time,
+                    'error': str(e), 
                 }
-                pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False)
+                pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
 
     print(f"Processing complete. Results saved to {args.outfile}")

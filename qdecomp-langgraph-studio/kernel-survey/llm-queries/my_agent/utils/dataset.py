@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 
@@ -28,7 +29,11 @@ dtypes={
         'source_code': 'string',
         }
 
-df = pd.read_csv('../dataset-gen/kernels_to_inference.csv', quotechar='"', dtype=dtypes)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+csv_path = os.path.join(script_dir, '..', '..', '..', 'dataset-gen', 'kernels_to_inference.csv')
+
+df = pd.read_csv(csv_path, quotechar='"', dtype=dtypes)
 
 
 assert df.shape[0] > 0, "The DataFrame is empty. Please check the CSV file path and content."
@@ -41,7 +46,7 @@ assert ((df['SP_FLOP'] + df['DP_FLOP']) > 0).all(), "All kernels should have non
 grouped = df.groupby('combined_name').size().reset_index(name='counts')
 # find the group with more than one row
 duplicates = grouped[grouped['counts'] > 1]
-print(duplicates)
+#print(duplicates)
 
 a = len(df['combined_name'].unique().tolist()) 
 b = df.shape[0]

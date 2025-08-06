@@ -145,10 +145,11 @@ def generate_order(sources: dict) -> list:
 # -------------------------------------------------------------------
 # Reorganize combined sources end-to-end
 # -------------------------------------------------------------------
-def reorganize_source(combined: str) -> str:
+def reorganize_source(combined: str, verbose: bool = False) -> str:
     sources = parse_combined_sources(combined)
-    print(f"Reorganizing {len(sources)} source files...")
-    print("Files found:", sources.keys())
+    if verbose:
+        print(f"\nReorganizing {len(sources)} source files...")
+        print("Files found:", sources.keys())
     order = generate_order(sources)
     ordered = {name: sources[name] for name in order}
     return render_combined_sources(ordered)

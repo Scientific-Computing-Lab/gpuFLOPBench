@@ -29,7 +29,7 @@ def get_io_cost(model_name: str, input_tokens: int, output_tokens: int) -> float
     return -1.0
 
 #def update_state_costs(state:KernelAnalysisState, response):
-def get_query_cost(response):
+def get_query_cost(response, verbose: bool = False):
     #if "input_tokens" not in state:
     #    state["input_tokens"] = 0
     #if "output_tokens" not in state:
@@ -41,9 +41,9 @@ def get_query_cost(response):
     token_usage = metadata.get("token_usage", {})
     model_name = metadata.get("model_name", "unknown")
 
-    print('Token usage metadata:', metadata)
-    print('Token usage:', token_usage)
-    print('Model name:', model_name)
+    #print('Token usage metadata:', metadata)
+    #print('Token usage:', token_usage)
+    #print('Model name:', model_name)
 
     input_tokens = token_usage.get("prompt_tokens", 0)
     output_tokens = token_usage.get("completion_tokens", 0)
@@ -54,9 +54,10 @@ def get_query_cost(response):
     io_cost = get_io_cost(model_name, input_tokens, output_tokens) 
     #state["total_cost"] += io_cost
 
-    print("This cost:", io_cost)
-    print("Input tokens for this query:", input_tokens)
-    print("Output tokens for this query:", output_tokens)
+    if verbose:
+        print("This cost:", io_cost)
+        print("Input tokens for this query:", input_tokens)
+        print("Output tokens for this query:", output_tokens)
 
     return {"input_tokens": input_tokens,
             "output_tokens": output_tokens,
