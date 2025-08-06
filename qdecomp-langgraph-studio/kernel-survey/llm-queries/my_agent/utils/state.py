@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 
 from langgraph.graph.message import add_messages
+import operator
 
 #class AgentState(TypedDict):
 #    messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -151,3 +152,8 @@ class KernelAnalysisState(TypedDict, total=False):
 
     sp_flop_perc_diff: float
     dp_flop_perc_diff: float
+
+    # Token usage tracking
+    input_tokens: Annotated[int, operator.add]
+    output_tokens: Annotated[int, operator.add]
+    total_cost: Annotated[float, operator.add]

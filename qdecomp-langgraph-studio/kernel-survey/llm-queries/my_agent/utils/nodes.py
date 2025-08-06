@@ -14,6 +14,8 @@ from utils.preprocessing.args_propagator import *
 from utils.preprocessing.source_reorganizer import *
 from utils.preprocessing.prune_irrelevant_code import *
 
+from utils.callbacks import get_query_cost 
+
 import os
 
 # The ids of the configurables are from the Configuration class in configuration.py
@@ -137,7 +139,9 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
         updated_source = result.content
 
-        return {"src_concretized_input_args": updated_source,
+        updated_costs = get_query_cost(result)
+
+        return updated_costs | {"src_concretized_input_args": updated_source,
                 "step1_messages": error_msg.format_messages(**inputs) + [result]}
 
     # this is the default path to use -- we hope the LLM agrees
@@ -176,13 +180,15 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 
         updated_source = result.content
 
+        updated_costs = get_query_cost(result)
+
         #print("\n\n\n")
         #print("---------- BEGIN STEP 1: Source Code Concretization ----------")
         #print(f"\n{updated_source}\n")
         #print("---------- END STEP 1: Source Code Concretization ----------")
         #print("\n\n\n")
 
-        return {"src_concretized_input_args": updated_source,
+        return updated_costs | {"src_concretized_input_args": updated_source,
                 "step1_messages": prompt.format_messages(**inputs) + [result]}
 
 
@@ -192,7 +198,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
 # we're going to force this node to give us structured output (i.e: a tool call)
 def concretization_checker(state: KernelAnalysisState, config):
 
-    concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker)
+    concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker, include_raw=True)
 
     msg_histroy = state["step1_messages"]
 
@@ -214,11 +220,15 @@ def concretization_checker(state: KernelAnalysisState, config):
 
     chain = prompt | concretization_checker_llm
 
-    resultState = chain.invoke({
+    result = chain.invoke({
         "concretization_rules": concretization_rules,
     })
 
-    return {"concretizationState": resultState}
+    resultState = result['parsed']
+        
+    updated_costs = get_query_cost(result['raw'])
+
+    return updated_costs | {"concretizationState": resultState}
 
 
 def route_concretization_status_edge(state: KernelAnalysisState):
@@ -267,7 +277,9 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
         updated_source = result.content
 
-        return {"src_single_kernel_execution": updated_source,
+        updated_costs = get_query_cost(result)
+
+        return updated_costs | {"src_single_kernel_execution": updated_source,
                 "step2_messages": error_msg.format_messages(**inputs) + [result]}
     
     else:
@@ -305,13 +317,15 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
         single_kernel_source = result.content
 
+        updated_costs = get_query_cost(result)
+
         #print("\n\n\n")
         #print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------")
         #print(f"\n{single_kernel_source}\n")
         #print("---------- END STEP 2: Single Kernel Execution Modification ----------")
         #print("\n\n\n")
 
-        return {"src_single_kernel_execution": single_kernel_source, 
+        return updated_costs | {"src_single_kernel_execution": single_kernel_source, 
                 "step2_messages": prompt.format_messages(**inputs) + [result]}
 
 
@@ -320,7 +334,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
 
 def single_kernel_execution_checker(state: KernelAnalysisState, config):
 
-    single_source_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(SingleKernelState)
+    single_source_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(SingleKernelState, include_raw=True)
 
     msg_histroy = state["step2_messages"]
 
@@ -340,9 +354,13 @@ def single_kernel_execution_checker(state: KernelAnalysisState, config):
 
     chain = prompt | single_source_checker_llm 
 
-    resultState = chain.invoke({})
+    result = chain.invoke({})
 
-    return {"srcSingleKernelState": resultState}
+    resultState = result['parsed']
+
+    updated_costs = get_query_cost(result['raw'])
+
+    return updated_costs | {"srcSingleKernelState": resultState}
 
 
 def route_single_kernel_source_status_edge(state: KernelAnalysisState):
@@ -413,13 +431,20 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
             )
     ])
     chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    first_kernel_invocation = chain.invoke({
+    
+    inputs = {
         "updated_source": state["src_single_kernel_execution"],
         "kernel_name": state["kernel_name"],
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"], 
-    }).content
+    }
+
+    result = chain.invoke(inputs)
+
+    first_kernel_invocation = result.content
+
+    updated_costs = get_query_cost(result)
 
     print("\n\n\n")
     print("---------- BEGIN STEP 3: First Kernel Invocation Snippet Extraction ----------")
@@ -427,11 +452,7 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
     print("---------- END STEP 3: First Kernel Invocation Snippet Extraction ----------")
     print("\n\n\n")
 
-    return {"snippet_first_kernel_invocation": first_kernel_invocation}
-
-
-
-
+    return updated_costs | {"snippet_first_kernel_invocation": first_kernel_invocation}
 
 
 
@@ -454,13 +475,20 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
             )
     ])
     chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    kernel_source_snippet = chain.invoke({
+
+    inputs = {
         "updated_source": state["src_single_kernel_execution"],
         "kernel_name": state["kernel_name"],
         "grid_size": state["grid_size"],
         "block_size": state["block_size"], 
         "total_num_threads": state["total_num_threads"], 
-    }).content
+    }
+
+    result = chain.invoke(inputs)
+
+    kernel_source_snippet = result.content
+
+    updated_costs = get_query_cost(result)
 
     print("\n\n\n")
     print("---------- BEGIN STEP 4: Kernel Source Snippet Extraction ----------")
@@ -468,11 +496,7 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
     print("---------- END STEP 4: Kernel Source Snippet Extraction ----------")
     print("\n\n\n")
 
-    return {"snippet_kernel_src": kernel_source_snippet}
-
-
-
-
+    return updated_costs | {"snippet_kernel_src": kernel_source_snippet}
 
 
 
@@ -518,7 +542,9 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
         snippet_kernel_src_concretized_values = result.content
 
-        return {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
+        updated_costs = get_query_cost(result)
+
+        return updated_costs | {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
                 "step5_messages": error_msg.format_messages(**inputs) + [result]}
 
     # this is the default path to use -- we hope the LLM agrees
@@ -560,20 +586,22 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
 
         snippet_kernel_src_concretized_values = result.content
 
+        updated_costs = get_query_cost(result)
+
         #print("\n\n\n")
         #print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------")
         #print(f"\n{snippet_kernel_src_concretized_values}\n")
         #print("---------- END STEP 5: Kernel Source Code Concretization ----------")
         #print("\n\n\n")
 
-        return {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
+        return updated_costs | {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
                 "step5_messages": prompt.format_messages(**inputs) + [result]}
 
 
 # we're going to force this node to give us structured output (i.e: a tool call)
 def snippet_concretization_checker(state: KernelAnalysisState, config):
 
-    concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker)
+    concretization_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(ConcretizationChecker, include_raw=True)
 
     msg_histroy = state["step5_messages"]
 
@@ -594,11 +622,15 @@ def snippet_concretization_checker(state: KernelAnalysisState, config):
 
     chain = prompt | concretization_checker_llm
 
-    resultState = chain.invoke({
+    result = chain.invoke({
         "snippet_concretization_rules": snippet_concretization_rules,
     })
 
-    return {"snippetConcretizationState": resultState}
+    resultState = result['parsed']
+
+    updated_costs = get_query_cost(result['raw'])
+
+    return updated_costs | {"snippetConcretizationState": resultState}
 
 
 def route_snippet_concretization_status_edge(state: KernelAnalysisState):
@@ -659,9 +691,14 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
             )
     ])
     chain = prompt | llm.with_config(configurable=config.get("configurable", {}))
-    kernel_annotated_warp_divergence = chain.invoke({
+    
+    inputs = {
         "snippet_kernel_src_concretized_values": state["snippet_kernel_src_concretized_values"],
-    }).content
+    }
+
+    result = chain.invoke(inputs)
+    kernel_annotated_warp_divergence = result.content
+    updated_costs = get_query_cost(result)
 
     print("\n\n\n")
     print("---------- BEGIN STEP 6: Kernel Warp Divergence Annotation ----------")
@@ -669,11 +706,7 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
     print("---------- END STEP 6: Kernel Warp Divergence Annotation ----------")
     print("\n\n\n")
 
-    return {"kernel_annotated_warp_divergence": kernel_annotated_warp_divergence}
-
-
-
-
+    return updated_costs | {"kernel_annotated_warp_divergence": kernel_annotated_warp_divergence}
 
 
 
@@ -722,13 +755,15 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
 
     kernel_annotated_WDPs = result.content
 
+    updated_costs = get_query_cost(result)
+
     #print("\n\n\n")
     #print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
     #print(f"\n{kernel_annotated_WDPs}\n")
     #print("---------- END STEP 7: Kernel WDP Annotation ----------")
     #print("\n\n\n")
 
-    return {"kernel_annotated_WDPs": kernel_annotated_WDPs}
+    return updated_costs | {"kernel_annotated_WDPs": kernel_annotated_WDPs}
 
 
 
@@ -742,7 +777,7 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
 def wdp_extractor(state: KernelAnalysisState, config):
 
     """Extracts the warp divergence points as a list from the annotated kernel source code."""
-    wdp_extractor_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(DivergencePointsList)
+    wdp_extractor_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(DivergencePointsList, include_raw=True)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -788,10 +823,17 @@ if (1)```\n\n"""
             )
     ])
     chain = prompt | wdp_extractor_llm
-    wdps = chain.invoke({
+    
+    inputs = {
         "kernel_annotated_WDPs": state["kernel_annotated_WDPs"],
         "step7_example_after": step7_example_after,
-    }).warp_divergence_points
+    }
+
+    result = chain.invoke(inputs)
+
+    wdps = result['parsed'].warp_divergence_points
+
+    updated_costs = get_query_cost(result['raw'])
 
     print("\n\n\n")
     print("---------- BEGIN STEP 7a: WDP Extraction ----------")
@@ -800,11 +842,7 @@ if (1)```\n\n"""
     print("---------- END STEP 7a: WDP Extraction ----------")
     print("\n\n\n")
 
-    return {"wdps_list": wdps, "wdp_processing_index": 0, "wdps_num_executions": []}
-
-
-
-
+    return updated_costs | {"wdps_list": wdps, "wdp_processing_index": 0, "wdps_num_executions": []}
 
 
 
@@ -814,7 +852,7 @@ if (1)```\n\n"""
 def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     """ Calculates the number of times each warp divergence point (WDP) will be executed based on mathematical summation logic."""
 
-    calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions)
+    calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions, include_raw=True)
 
     processing_idx = state["wdp_processing_index"]
     wdp = state["wdps_list"][processing_idx]
@@ -876,17 +914,19 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
 
     result = chain.invoke(inputs)
 
-    num_executions = result.num_executions
+    num_executions = result['parsed']
+
+    updated_costs = get_query_cost(result['raw'])
 
     print("\n")
-    print(f"\t\t [{processing_idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions}]") 
+    print(f"\t\t [{processing_idx+1}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
     print("\n")
 
-    new_executions = state["wdps_num_executions"] + [result]
+    new_executions = state["wdps_num_executions"] + [num_executions]
 
     print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
 
-    return {"wdps_num_executions": new_executions, 
+    return updated_costs | {"wdps_num_executions": new_executions, 
             "wdp_processing_index": processing_idx + 1}
 
 
@@ -944,7 +984,9 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
         kernel_annotated_num_ops = result.content
 
-        return {"kernel_annotated_num_ops": kernel_annotated_num_ops,
+        updated_costs = get_query_cost(result)
+
+        return updated_costs | {"kernel_annotated_num_ops": kernel_annotated_num_ops,
                 "step8_messages": error_msg.format_messages(**inputs) + [result]}
 
     else:
@@ -979,19 +1021,21 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
 
         kernel_annotated_num_ops = result.content
 
+        updated_costs = get_query_cost(result)
+
         #print("\n\n\n")
         #print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------")
         #print(f"\n{kernel_annotated_num_ops}\n")
         #print("---------- END STEP 8: Kernel Number of Operations Annotation ----------")
         #print("\n\n\n")
 
-        return {"kernel_annotated_num_ops": kernel_annotated_num_ops,
+        return updated_costs | {"kernel_annotated_num_ops": kernel_annotated_num_ops,
                 "step8_messages": prompt.format_messages(**inputs) + [result]}
 
 
 def num_ops_checker(state: KernelAnalysisState, config):
 
-    num_ops_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumOpsState)
+    num_ops_checker_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumOpsState, include_raw=True)
 
     msg_histroy = state["step8_messages"]
 
@@ -1013,11 +1057,15 @@ def num_ops_checker(state: KernelAnalysisState, config):
 
     chain = prompt | num_ops_checker_llm 
 
-    resultState = chain.invoke({
+    result = chain.invoke({
         "kernel_num_ops_rules": kernel_num_ops_rules,
     })
 
-    return {"numOpsAnnotationState": resultState}
+    resultState = result['parsed']
+
+    updated_costs = get_query_cost(result['raw'])
+
+    return updated_costs | {"numOpsAnnotationState": resultState}
 
 
 def route_num_ops_annotation_status_edge(state: KernelAnalysisState) -> Literal["ACCEPT", "REJECT"]:
@@ -1051,7 +1099,7 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
 
     print("WDPS STRING", wdps_string)
 
-    flop_counts_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts)
+    flop_counts_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts, include_raw=True)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -1082,7 +1130,9 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
 
     result = chain.invoke(inputs)
 
-    summed_kernel_ops = result
+    summed_kernel_ops = result['parsed']
+
+    updated_costs = get_query_cost(result['raw'])
 
     print("\n\n\n")
     print("---------- BEGIN STEP 9: Kernel Operations Summary ----------")
@@ -1099,9 +1149,18 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
     sp_flop_perc_diff = ((sp_flop_diff * 100) / empirical_sp_flop_count) if empirical_sp_flop_count != 0 else 0
     dp_flop_perc_diff = ((dp_flop_diff * 100) / empirical_dp_flop_count) if empirical_dp_flop_count != 0 else 0
 
-    return {"summed_kernel_ops": summed_kernel_ops,
-            "sp_flop_diff": sp_flop_diff,
-            "dp_flop_diff": dp_flop_diff,
-            "sp_flop_perc_diff": sp_flop_perc_diff,
-            "dp_flop_perc_diff": dp_flop_perc_diff,
-            }
+    return updated_costs | {"summed_kernel_ops": summed_kernel_ops, "sp_flop_diff": sp_flop_diff, "dp_flop_diff": dp_flop_diff, "sp_flop_perc_diff": sp_flop_perc_diff, "dp_flop_perc_diff": dp_flop_perc_diff}
+
+def print_summary(state: KernelAnalysisState):
+    """Prints the summary of token usage and cost."""
+    input_tokens = state.get("input_tokens", 0)
+    output_tokens = state.get("output_tokens", 0)
+    total_cost = state.get("total_cost", 0.0)
+
+    print("\n--- Execution Summary ---")
+    print(f"Input Tokens: {input_tokens}")
+    print(f"Output Tokens: {output_tokens}")
+    print(f"Total Cost: ${total_cost:.6f}")
+    print("-----------------------")
+
+    return state

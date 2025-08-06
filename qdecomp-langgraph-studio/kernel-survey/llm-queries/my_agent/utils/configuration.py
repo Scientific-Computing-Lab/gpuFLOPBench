@@ -72,7 +72,7 @@ class Configuration(BaseModel):
         ],
         {"__template_metadata__": {"kind": "llm"}},
     ] = Field(
-        default="resize-cuda",
+        default="(ace-cuda, boundaryConditionsU)",
         description="The name of the input CUDA program to study.",
         json_schema_extra={"langgraph_nodes": ["get_input_problem_0"]},
     )

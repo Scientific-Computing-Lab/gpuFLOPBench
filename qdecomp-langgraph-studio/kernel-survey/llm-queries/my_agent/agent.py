@@ -2,6 +2,7 @@ from typing import TypedDict, Literal
 from my_agent.utils.nodes import *
 from my_agent.utils.state import KernelAnalysisState
 from my_agent.utils.configuration import Configuration
+from my_agent.utils.nodes import print_summary, wdp_num_executions_looper, route_num_ops_annotation_status_edge, route_snippet_concretization_status_edge, route_single_kernel_source_status_edge, route_concretization_status_edge
 
 from langgraph.graph import StateGraph, END
 
@@ -11,7 +12,7 @@ from langgraph.graph import StateGraph, END
 #    #os.environ['OPENROUTER_API_KEY'] = OPENROUTER_API_KEY
 
 
-workflow = StateGraph(KernelAnalysisState, config_schema=Configuration)
+workflow = StateGraph(KernelAnalysisState, context_schema=Configuration)
 
 workflow.add_node("get_input_problem_0", get_input_problem)
 
@@ -39,6 +40,7 @@ workflow.add_node("num_ops_checker_8a", num_ops_checker)
 
 
 workflow.add_node("kernel_ops_summarizer_9", kernel_ops_summarizer)
+workflow.add_node("print_summary", print_summary)
 
 
 # Graph edges
@@ -118,7 +120,8 @@ workflow.add_conditional_edges(
     }
 )
 
-workflow.add_edge("kernel_ops_summarizer_9", END)
+workflow.add_edge("kernel_ops_summarizer_9", "print_summary")
+workflow.add_edge("print_summary", END)
 
 # Set entrypoint
 workflow.set_entry_point("get_input_problem_0")
