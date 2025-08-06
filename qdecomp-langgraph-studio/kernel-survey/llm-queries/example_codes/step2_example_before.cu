@@ -20,6 +20,12 @@ __global__ void example_kernel(const T* __restrict__ in, T* __restrict__ out, in
     }
 }
 
+void some_random_function() {
+    // This function is here just for fun. It may or may not do anything useful.
+    std::cout << "This is a random function that does nothing important." << std::endl;
+    return;
+}
+
 template<typename T = float>
 void run_stencil2d(int num_iterations, int width, int height) {
     static_assert(std::is_arithmetic<T>::value, "T must be arithmetic type");

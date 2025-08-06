@@ -119,7 +119,8 @@ concretization_rules = """1) When a value is being concretized/replaced, make su
 6) If a ternary operator is encountered, convert it to a regular if statement and mark the conversion with the comment of `// CONVERTED TERNARY TO IF STATEMENT`.
 7) DO NOT change `min` or `max` operations to `if` statements.
 8) DO NOT include any additional comments or explanations in the output.
-9) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.\n"""
+9) If you cannot make a value concrete (e.g.: pointers), leave it as-is. Only return the transformed source code, nothing else.
+10) DO NOT remove any large portions of the code, keep as much of the original code as possible.\n"""
 
 def src_input_args_concretizer(state: KernelAnalysisState, config):
     verbose = config.get("configurable", {}).get("verbose_printing", False)
@@ -299,7 +300,7 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
              "This means removing any loops or multiple invocations of the kernel, to leave only the first invocation of the target kernel in the code. This also means ensuring that the kernel is invoked with the correct arguments, grid, and block sizes.\n"
              "The modifications should be done by commenting out parts of the original code to be changed, and adding the changes on a new line below the original commented code.\n"
              "If an entire function ceases to be used or called due to commenting, omit that function from the transformed source code.\n"
-             "If more than one CUDA kernel appears in the source code, and if the target CUDA kernel does not depend on said other kernels, remove the other kernels and their invocations from the source code.\n"
+             "If more than one CUDA kernel appears in the source code, AND if the target CUDA kernel DOES NOT depend on said other kernels, remove the other kernels and their invocations from the source code.\n"
              "Only return the modified source code, nothing else.\nAn example is provided below:\n"
              "Example Before:\n"
              "{step2_example_before}\n\n"
@@ -480,7 +481,7 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
          "You are a code scraper that extracts the source code snippet of the target kernel from the given C/C++ CUDA source code. "
          "This means identifying the target CUDA kernel function definition and returning only that part of the code, including the function signature, body, and any other __device__ or __global__ CUDA kernels the target CUDA kernel may call within its body."
          "Only return the extracted kernel source code and associated GPU kernel snippets, nothing else.\n"
-         "There may exist multuple CUDA kernels in the source code, but you should only return the one that matches the target kernel name and any kernels which the target kernel makes calls to.\n"
+         "There may exist multuple CUDA kernels in the source code, but you should only return the one that most closely matches the target kernel name and any kernels which the target kernel makes calls to.\n"
          ),
         ("human",
             "Target CUDA Kernel Name: ```{kernel_name}```\n"
@@ -886,6 +887,12 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
         print("\t\t Current WDP Processing Index: ", state["wdp_processing_index"])
 
     processing_idx = state["wdp_processing_index"]
+    # sometimes the list is completely empty, so the processing_idx will be out of bounds
+    if processing_idx >= len(state["wdps_list"]):
+        if verbose:
+            print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
+        return {}
+
     wdp = state["wdps_list"][processing_idx]
 
     if verbose:
