@@ -11,6 +11,40 @@ from .my_agent.utils.dataset import df
 import os
 import time
 import traceback
+import ast
+
+def parse_and_sum_cost(cost_val):
+    """Safely parse a string representation of a list and sum its elements."""
+    if isinstance(cost_val, str):
+        try:
+            # Safely evaluate string to a Python literal (e.g., a list)
+            num_list = ast.literal_eval(cost_val)
+            if isinstance(num_list, list):
+                return sum(num_list)
+        except (ValueError, SyntaxError):
+            return 0.0  # Return 0 if parsing fails
+    elif isinstance(cost_val, list):
+        return sum(cost_val) # Already a list
+    return 0.0 # Not a string or list, return 0
+
+
+def get_current_spend(filename: str) -> float:
+    if not os.path.exists(filename):
+        return 0.0
+
+    try:
+        existing_df = pd.read_csv(filename, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+        if 'total_cost' in existing_df.columns:
+            total_spend = existing_df[~existing_df['total_cost'].isna()]['total_cost'].apply(parse_and_sum_cost).sum()
+            return total_spend
+        else:
+            return 0.0
+    except pd.errors.EmptyDataError:
+        print(f"Warning: Output file '{filename}' is empty. Assuming $0.0 spend.")
+        return 0.0
+    except Exception as e:
+        print(f"Error reading spend from '{filename}': {e}")
+        return 0.0
 
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
@@ -44,12 +78,11 @@ def main():
     total_runs = total_kernels * args.numTrials
     completed_runs = 0
     outfile_exists = os.path.exists(args.outfile)
-    total_cost = 0.0
+    total_cost = get_current_spend(args.outfile)
 
     if outfile_exists and existing_results_df is not None and not existing_results_df.empty:
         # Count only successful runs (where error is NaN)
         completed_runs = existing_results_df[existing_results_df['error'].isna()].shape[0]
-        total_cost = existing_results_df['total_cost'].apply(sum).sum()
 
     remaining_runs = total_runs - completed_runs
 
@@ -76,9 +109,13 @@ def main():
         return
 
 
+    current_total_spend = 0.0
+
     for trial in tqdm(range(1, args.numTrials + 1), desc="Trials"):
-        for index, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Trial {trial}"):
+        for index, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Trial {trial} - Spend: ${current_total_spend:.2f}"):
             combined_name = row['combined_name']
+
+            current_total_spend = get_current_spend(args.outfile)
 
             # --- Check if sample already processed ---
             if existing_results_df is not None and not existing_results_df.shape[0] == 0:
@@ -110,7 +147,8 @@ def main():
                     "temp": args.temp,
                     "input_problem": combined_name,
                     "verbose_printing": args.verbose
-                }
+                },
+                "recursion_limit": 100,  
             }
             
 
@@ -137,6 +175,11 @@ def main():
                 end_time = time.time()
                 print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}")
                 traceback.print_exc()
+
+                if csv_headers is None:
+                    existing_results_df = pd.read_csv(args.outfile, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+                    csv_headers = existing_results_df.columns.tolist()
+
                 # Optionally add a placeholder for the failed row
                 # Create a placeholder row with all expected columns
                 error_result = {key: None for key in csv_headers}
