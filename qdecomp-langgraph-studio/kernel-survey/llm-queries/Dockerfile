@@ -22,6 +22,36 @@ RUN set -ex && \
     done
 # -- End of non-package dependency my_agent --
 
+# -- Adding non-package dependency utils --
+ADD ./my_agent/utils /deps/__outer_utils/utils
+RUN set -ex && \
+    for line in '[project]' \
+                'name = "utils"' \
+                'version = "0.1"' \
+                '[tool.setuptools.package-data]' \
+                '"*" = ["**/*"]' \
+                '[build-system]' \
+                'requires = ["setuptools>=61"]' \
+                'build-backend = "setuptools.build_meta"'; do \
+        echo "$line" >> /deps/__outer_utils/pyproject.toml; \
+    done
+# -- End of non-package dependency utils --
+
+# -- Adding non-package dependency preprocessing --
+ADD ./my_agent/utils/preprocessing /deps/__outer_preprocessing/src
+RUN set -ex && \
+    for line in '[project]' \
+                'name = "preprocessing"' \
+                'version = "0.1"' \
+                '[tool.setuptools.package-data]' \
+                '"*" = ["**/*"]' \
+                '[build-system]' \
+                'requires = ["setuptools>=61"]' \
+                'build-backend = "setuptools.build_meta"'; do \
+        echo "$line" >> /deps/__outer_preprocessing/pyproject.toml; \
+    done
+# -- End of non-package dependency preprocessing --
+
 # -- Installing all local dependencies --
 RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e /deps/*
 # -- End of local dependencies install --

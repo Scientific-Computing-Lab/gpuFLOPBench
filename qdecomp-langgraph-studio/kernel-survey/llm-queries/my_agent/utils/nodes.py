@@ -155,6 +155,7 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
         prompt = ChatPromptTemplate.from_messages([
             ("system", 
              "You are a code transformer that replaces all variable definitions, preprocessor defines, template parameters, and references in the given C/C++ CUDA source code with their corresponding hard-coded input argument literal values from the given execution arguments and evaluated/derived source code values.\n"
+             "Original lines are commented out, and the new lines are added below the original commented code.\n"
              "Be sure to follow the following RULES when transforming the source code:\n{concretization_rules}\n"
              "Below is an example of the desired types of variable and explicit value concretization source code transformations:\n"
              "{step1_example_before}\n\n"
@@ -861,6 +862,7 @@ if (1)```\n\n"""
     if verbose:
         print("\n\n\n")
         print("---------- BEGIN STEP 7a: WDP Extraction ----------")
+        print('Total number of WDPs extracted: ', len(wdps))
         for wdp in wdps:
             print(f"\nclassification: [{wdp.classification}]\nsource_code:[\n{wdp.source_code}]\n\n")
         print("---------- END STEP 7a: WDP Extraction ----------")
@@ -953,14 +955,16 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
         print(f"\t\t [{processing_idx}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
         print("\n")
 
-    new_executions = state["wdps_num_executions"] + [num_executions]
+    #new_executions = state["wdps_num_executions"] + [num_executions]
+    new_executions = [num_executions]
 
     if verbose:
         if processing_idx+1 == len(state["wdps_list"]):
             print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
 
     return updated_costs | {"wdps_num_executions": new_executions, 
-                            "wdp_processing_index": processing_idx+1}
+                            "wdp_processing_index": 1}
+                            #"wdp_processing_index": processing_idx+1}
 
 
 def wdp_num_executions_looper(state: KernelAnalysisState):

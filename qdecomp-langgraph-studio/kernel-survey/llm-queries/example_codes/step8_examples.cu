@@ -22,6 +22,13 @@ __global__ void float_double_examples_kernel(
 
     // 1 SP-FLOP, 0 DP-FLOP
     // Explanation:
+    //  - negation operator (-) causes 1 FADD operation
+    //  - SP-FLOP: 1
+    //  - DP-FLOP: 0 (no double-precision)
+    float_results[0] = -fc;
+
+    // 1 SP-FLOP, 0 DP-FLOP
+    // Explanation:
     //   - static_cast<float>(a): Converts an int to float, this does not involve any FADD, FMUL, or FFMA operation
     //   - "+=" is 1 FADD operation
     //   - SP-FLOP: 1 
@@ -113,6 +120,13 @@ __global__ void float_double_examples_kernel(
     float_results[9] += static_cast<float>(f + g + h);
 
     // --- double examples (mirror float above) ---
+
+    // 0 SP-FLOP, 1 DP-FLOP
+    // Explanation:
+    //  - negation operator (-) causes 1 DADD operation
+    //  - SP-FLOP: 0 (no single-precision)
+    //  - DP-FLOP: 1 
+    double_results[0] = -g;
 
     // 0 SP-FLOP, 1 DP-FLOP
     // Explanation:

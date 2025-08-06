@@ -1,8 +1,9 @@
 from typing import TypedDict, Literal
-from .utils.nodes import *
-from .utils.state import KernelAnalysisState
-from .utils.configuration import Configuration
-from .utils.nodes import print_summary, wdp_num_executions_looper, route_num_ops_annotation_status_edge, route_snippet_concretization_status_edge, route_single_kernel_source_status_edge, route_concretization_status_edge
+
+from my_agent.utils.nodes import *
+from my_agent.utils.state import KernelAnalysisState
+from my_agent.utils.configuration import Configuration
+from my_agent.utils.nodes import print_summary, wdp_num_executions_looper, route_num_ops_annotation_status_edge, route_snippet_concretization_status_edge, route_single_kernel_source_status_edge, route_concretization_status_edge
 
 from langgraph.graph import StateGraph, END
 
