@@ -124,10 +124,11 @@ def main():
     current_total_spend = 0.0
 
     for trial in tqdm(range(1, args.numTrials + 1), desc="Trials"):
-        for index, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Trial {trial} - Spend: ${current_total_spend:.2f}"):
+        for index, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Trial {trial}"):
             combined_name = row['combined_name']
 
             current_total_spend = get_current_spend(args.outfile)
+            print(f"\nCurrent Total Spend: ${current_total_spend:.2f}\n")
 
             # --- Check if sample already processed ---
             if existing_results_df is not None and not existing_results_df.shape[0] == 0:
