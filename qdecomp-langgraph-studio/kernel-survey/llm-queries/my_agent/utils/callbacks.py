@@ -17,6 +17,7 @@ MODEL_PRICES = {
     "google/gemini-2.0-flash-lite-001": (0.075, 0.3),
     "google/gemini-2.0-flash-001": (0.1, 0.4),
     "google/gemini-2.5-flash": (0.3, 2.5),
+    "google/gemini-2.5-flash-lite": (0.1, 0.4),
     "anthropic/claude-3.5-haiku": (0.8, 4.0),
 }
 
