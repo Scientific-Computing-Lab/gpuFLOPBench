@@ -10,7 +10,7 @@ from tqdm import tqdm
 from dataclasses import dataclass
 import re, ast
 import streamlit as st
-from streamlitManualUI import create_streamlit_ui
+from streamlitManualUI import create_streamlit_ui, output_csv_name
 
 
 def read_csvs():
@@ -136,8 +136,29 @@ def add_flop_counts(success_df):
 def add_analysis_columns(df):
     # all values are binary, unless otherwise specified
     # kernel-level analysis columns (should be the same across a target_to_examine)
-    df['hasMultidimGridBlkSize'] = 0
-    df['hasSPandDPnnzFlops'] = 0
+
+    # extract (X,Y,Z) integers from the string "(X,Y,Z)"
+    def is_multidim_grid_blk_size(value):
+        if pd.isna(value) or value == "":
+            return 0
+        try:
+            x, y, z = ast.literal_eval(value)
+            if (x == 1 and y == 1 and z != 1) or (x == 1 and y != 1 and z == 1) or (x != 1 and y == 1 and z == 1):
+                return 0
+            else:
+                return 1
+        except (ValueError, SyntaxError):
+            return 0
+
+    df['hasMultidimGridBlkSize'] = df['grid_size'].apply(is_multidim_grid_blk_size) | df['block_size'].apply(is_multidim_grid_blk_size)
+
+    def has_sp_and_dp_nnz_flops(row):
+        sp_flop = row['empirical_sp_flop_count']
+        dp_flop = row['empirical_dp_flop_count']
+        return 1 if sp_flop > 0 and dp_flop > 0 else 0
+
+    df['hasSPandDPnnzFlops'] = df.apply(has_sp_and_dp_nnz_flops, axis=1)
+
     df['hasSpecialMathFunctions'] = 0
     df['hasCommonSubexpressions'] = 0
     df['hasFPDivisions'] = 0
@@ -157,6 +178,7 @@ def add_analysis_columns(df):
     df['toolCallExplanationSPFLOPCountMismatch'] = df['missingSPFLOPExplanation']
     df['toolCallExplanationDPFLOPCountMismatch'] = df['missingDPFLOPExplanation']
     df['extractedKernelArgsMissingImportantValue'] = 0
+    df['extractedIncorrectSnippet'] = 0
 
     return df
 
@@ -208,12 +230,17 @@ def create_user_interface(success_df, target_names):
 #      dtype='object')
 
 def main():
-    # Read and process the data
-    df = read_csvs()
-    df = add_custom_columns(df)
-    success_df = get_success_cases(df)
-    success_df = add_flop_counts(success_df)
-    success_df = add_analysis_columns(success_df)
+    # Check if the output CSV file exists
+    if os.path.exists(output_csv_name):
+        print(f"Found existing output file: {output_csv_name}. Loading data...")
+        success_df = pd.read_csv(output_csv_name)
+    else:
+        # Read and process the data
+        df = read_csvs()
+        df = add_custom_columns(df)
+        success_df = get_success_cases(df)
+        success_df = add_flop_counts(success_df)
+        success_df = add_analysis_columns(success_df)
 
     # Launch the Streamlit UI
     create_streamlit_ui(success_df)

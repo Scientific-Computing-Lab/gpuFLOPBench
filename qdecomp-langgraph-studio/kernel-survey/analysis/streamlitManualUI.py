@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 
+output_csv_name = 'manually_processed.csv'
+
 def create_streamlit_ui(success_df):
     # Initialize session state for navigation
     if 'current_index' not in st.session_state:
@@ -38,16 +40,15 @@ def create_streamlit_ui(success_df):
 
     # Kernel-Level Analysis in Sidebar
     st.sidebar.header("Kernel-Level Analysis")
-    kernel_columns = ['hasMultidimGridBlkSize', 'hasSPandDPnnzFlops',
-                      'hasSpecialMathFunctions', 'hasCommonSubexpressions', 'hasFPDivisions',
-                      'hasDDBranching', 'callsDeviceFunction', 'snippetHasDeviceFunction']
+    kernel_columns = ['hasSpecialMathFunctions', 'hasCommonSubexpressions', 'hasFPDivisions',
+                      'hasDDBranching', 'callsDeviceFunction']
     kernel_values = {}
     for col in kernel_columns:
-        kernel_values[col] = st.sidebar.checkbox(col, value=bool(target_to_examine[col].iloc[0]))
+        kernel_values[col] = st.sidebar.checkbox(col+f"({current_target})", value=bool(target_to_examine[col].iloc[0]))
 
-    notes = st.sidebar.text_area("Notes", value=target_to_examine['notes'].iloc[0], key='notes')
+    notes = st.sidebar.text_area(f"{current_target} Notes", value=target_to_examine['notes'].iloc[0], key='notes')
 
-    target_to_examine['notes'] = notes
+    target_to_examine['notes'] = notes if notes else ""
 
     # Apply kernel-level values to all rows in target_to_examine
     for col, value in kernel_values.items():
@@ -62,8 +63,9 @@ def create_streamlit_ui(success_df):
 
     for i, tab in enumerate(tabs):
         row = tab_data[i][1]
+        row_idx = tab_data[i][0].split()[1]  # Extract row index from tab name
         with tab:
-            st.write(f"### Row {i + 1}")
+            st.write(f"### Row {row_idx}")
             col1, col2, col3, col4 = st.columns([2, 1, 2, 2])
 
             # make some streamlit rows
@@ -93,10 +95,10 @@ def create_streamlit_ui(success_df):
             row_columns = ['missingSPFLOPExplanation', 'missingDPFLOPExplanation',
                            'toolCallExplanationSPFLOPCountMismatch', 'toolCallExplanationDPFLOPCountMismatch',
                            'spExplanationHasCloseFLOPCount', 'dpExplanationHasCloseFLOPCount',
-                           'extractedKernelArgsMissingImportantValue']
+                           'extractedKernelArgsMissingImportantValue', 'snippetHasDeviceFunction', 'extractedIncorrectSnippet']
             row_values = {}
             for col in row_columns:
-                row_values[col] = col2.checkbox(f"{col} (Row {i + 1})", value=bool(row[col]))
+                row_values[col] = col2.checkbox(f"{col} (Row {row_idx})", value=bool(row[col]))
 
             # Apply row-specific values to the current row
             for col, value in row_values.items():
@@ -107,4 +109,4 @@ def create_streamlit_ui(success_df):
 
     # Save the updated DataFrame to a file when navigating
     if st.session_state.current_index != 0 or st.session_state.current_index != len(target_names) - 1:
-        success_df.to_csv('manually_processed.csv', index=False)
+        success_df.to_csv(output_csv_name, index=False)
