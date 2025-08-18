@@ -69,11 +69,15 @@ def create_streamlit_ui(success_df):
             # make some streamlit rows
             explanationContainer = col1.container()
 
-            explanationContainer.text_area("SP FLOP Explanation", row['sp_flop_explanation'], height="content")
+            explanationContainer.text("SP FLOP Explanation")
+            explanationContainer.code(row['sp_flop_explanation'], line_numbers=True, wrap_lines=True, language='markdown', height="content")
             explanationContainer.text(f"Predicted SP FLOP Count: {row['sp_flop_predicted']:,}")
             explanationContainer.text(f"\tEmpirical SP FLOP Count: {row['empirical_sp_flop_count']:,}")
 
-            explanationContainer.text_area("DP FLOP Explanation", row['dp_flop_explanation'], height="content")
+            explanationContainer.divider()
+
+            explanationContainer.text("DP FLOP Explanation")
+            explanationContainer.code(row['dp_flop_explanation'], line_numbers=True, wrap_lines=True, language='markdown', height="content")
             explanationContainer.text(f"Predicted DP FLOP Count: {row['dp_flop_predicted']:,}")
             explanationContainer.text(f"\tEmpirical DP FLOP Count: {row['empirical_dp_flop_count']:,}")
 
@@ -87,8 +91,8 @@ def create_streamlit_ui(success_df):
 
             # Row-Specific Checkboxes
             row_columns = ['missingSPFLOPExplanation', 'missingDPFLOPExplanation',
-                           'spExplanationHasCloseFLOPCount', 'dpExplanationHasCloseFLOPCount',
                            'toolCallExplanationSPFLOPCountMismatch', 'toolCallExplanationDPFLOPCountMismatch',
+                           'spExplanationHasCloseFLOPCount', 'dpExplanationHasCloseFLOPCount',
                            'extractedKernelArgsMissingImportantValue']
             row_values = {}
             for col in row_columns:
