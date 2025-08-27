@@ -80,10 +80,22 @@ def check_has_float_division(input: TargetKernel):
             right_node = node.child_by_field_name('right')
             if get_expression_type(right_node, float_variables) == 'float':
                 left_node = node.child_by_field_name('left')
-                # We need to find the identifier on the left side.
-                # It could be a simple identifier or part of another expression (e.g., array access)
                 if left_node and left_node.type == 'identifier':
                     float_variables.add(left_node.text.decode())
+
+            # --- new: catch '/=' compound‐division (handles '/  =' too) ---
+            operator_node = node.child_by_field_name('operator')
+            if operator_node:
+                # strip out all whitespace in the operator token
+                op = ''.join(operator_node.text.decode().split())
+                if op == '/=':
+                    left_operand  = node.child_by_field_name('left')
+                    right_operand = node.child_by_field_name('right')
+                    left_type  = get_expression_type(left_operand,  float_variables)
+                    right_type = get_expression_type(right_operand, float_variables)
+                    if left_type == 'float' or right_type == 'float':
+                        input.has_float_division = True
+                        input.float_division_line_num.append(node.start_point[0] + 1)
 
         # Check for division operations
         if node.type == 'binary_expression' and node.children[1].type == '/':
