@@ -43,6 +43,10 @@ class Configuration(BaseModel):
                                  json_schema_extra={"langgraph_nodes": llm_nodes}
                                  )
 
+    api_version: str = Field(default="",
+                            description="(Azure only) The API version to use when connecting to the Azure OpenAI service.",
+                            json_schema_extra={"langgraph_nodes": llm_nodes}
+                            )
     model: Annotated[
         Literal[
             "openai/gpt-4.1-nano", # in $0.1 out $0.4
@@ -57,6 +61,7 @@ class Configuration(BaseModel):
             "google/gemini-2.0-flash-001", # in $0.1 out $0.4
             "google/gemini-2.5-flash", # in $0.3 out $2.5
             "anthropic/claude-3.5-haiku" # in $0.8 out $4.0
+            "gpt-5-mini", # in $
         ],
         {"__template_metadata__": {"kind": "llm"}},
     ] = Field(

@@ -19,6 +19,7 @@ MODEL_PRICES = {
     "google/gemini-2.5-flash": (0.3, 2.5),
     "google/gemini-2.5-flash-lite": (0.1, 0.4),
     "anthropic/claude-3.5-haiku": (0.8, 4.0),
+    "gpt-5-mini": (0.25, 2.0)
 }
 
 def get_io_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:

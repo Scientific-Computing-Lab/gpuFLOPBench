@@ -59,7 +59,9 @@ def get_current_spend(filename: str) -> float:
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
     parser.add_argument("--modelName", type=str, default="openai/gpt-4.1-mini", help="Language model name")
-    parser.add_argument("--provider", type=str, default="https://openrouter.com/api/v1", help="URL of the model provider")
+    parser.add_argument("--provider_url", type=str, default="https://openrouter.com/api/v1", help="URL of the model provider")
+    parser.add_argument("--useAzure", action='store_true', help="Enable Azure model usage.")
+    parser.add_argument("--api_version", type=str, default=None, help="If using Azure, specify the API version.")
     parser.add_argument("--top_p", type=float, default=0.1, help="Top-p parameter for the language model")
     parser.add_argument("--temp", type=float, default=0.2, help="Temperature parameter for the language model")
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
@@ -72,7 +74,15 @@ def main():
     # --- Create output filename if not provided ---
     if args.outfile is None:
         model_name_sanitized = args.modelName.replace("/", "-")
-        args.outfile = f"llm_query_dataset--{model_name_sanitized}.csv"
+        provider_name = "azure" if args.useAzure else "openrouter"
+        args.outfile = f"llm_query_dataset-{provider_name}--{model_name_sanitized}.csv"
+
+    if args.useAzure:
+        assert args.api_version is not None, "When using Azure, --api_version must be specified."
+        assert "AZURE_OPENAI_API_KEY" in os.environ, "Environment variable AZURE_OPENAI_API_KEY must be set for Azure usage."
+
+    else:
+        assert "OPENAI_API_KEY" in os.environ, "Environment variable OPENAI_API_KEY must be set for OpenRouter usage."
 
     # --- Restart functionality: Load existing results if output file exists ---
     existing_results_df = None
@@ -107,7 +117,10 @@ def main():
     print(f"  Output File: {args.outfile}")
     print(f"  File Exists: {outfile_exists}")
     print(f" Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
-    print(f" Provider URL: {args.provider}")
+    print(f" Provider URL: {args.provider_url}")
+    print(f"    Use Azure: {'ENABLED' if args.useAzure else 'Disabled'}")
+    if args.useAzure:
+        print(f"  API Version: {args.api_version}")
     print("---------------------------------")
     print(f" Total Kernels: {total_kernels}")
     print(f"    Total Runs: {total_runs}")
@@ -153,18 +166,35 @@ def main():
                     continue
                 
 
-            config = {
-                "configurable": {
-                    "provider_api_key": os.getenv("OPENAI_API_KEY"),
-                    "provider_url": args.provider,
-                    "model": args.modelName,
-                    "top_p": args.top_p,
-                    "temp": args.temp,
-                    "input_problem": combined_name,
-                    "verbose_printing": args.verbose
-                },
-                "recursion_limit": 100,  
-            }
+            if args.useAzure:
+                config = {
+                    "configurable": {
+                        "llm": "azure",
+                        "provider_url": args.provider_url,
+                        "model": args.modelName,
+                        "top_p": args.top_p,
+                        "temp": args.temp,
+                        "provider_api_key": os.getenv("AZURE_OPENAI_API_KEY"),
+                        "api_version": args.api_version,
+                        "input_problem": combined_name,
+                        "verbose_printing": args.verbose
+                    },
+                    "recursion_limit": 100,  
+                }
+            else:
+                config = {
+                    "configurable": {
+                        "llm": "openai",
+                        "opr_provider_url": args.provider_url,
+                        "opr_model": args.modelName,
+                        "opr_top_p": args.top_p,
+                        "opr_temp": args.temp,
+                        "ope_provider_api_key": os.getenv("OPENAI_API_KEY"),
+                        "input_problem": combined_name,
+                        "verbose_printing": args.verbose
+                    },
+                    "recursion_limit": 100,  
+                }
             
 
             include_header = ((trial == 1) and (index == 0))
