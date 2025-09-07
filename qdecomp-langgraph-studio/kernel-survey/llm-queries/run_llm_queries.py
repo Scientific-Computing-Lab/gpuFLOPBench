@@ -59,6 +59,7 @@ def get_current_spend(filename: str) -> float:
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
     parser.add_argument("--modelName", type=str, default="openai/gpt-4.1-mini", help="Language model name")
+    parser.add_argument("--provider", type=str, default="https://openrouter.com/api/v1", help="URL of the model provider")
     parser.add_argument("--top_p", type=float, default=0.1, help="Top-p parameter for the language model")
     parser.add_argument("--temp", type=float, default=0.2, help="Temperature parameter for the language model")
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
@@ -106,6 +107,7 @@ def main():
     print(f"  Output File: {args.outfile}")
     print(f"  File Exists: {outfile_exists}")
     print(f" Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
+    print(f" Provider URL: {args.provider}")
     print("---------------------------------")
     print(f" Total Kernels: {total_kernels}")
     print(f"    Total Runs: {total_runs}")
@@ -154,7 +156,7 @@ def main():
             config = {
                 "configurable": {
                     "provider_api_key": os.getenv("OPENAI_API_KEY"),
-                    "provider_url": "https://openrouter.com/api/v1",
+                    "provider_url": args.provider,
                     "model": args.modelName,
                     "top_p": args.top_p,
                     "temp": args.temp,
