@@ -30,6 +30,7 @@ try:
         temperature=1,
         top_p=1,
         model_name="gpt-5-mini",
+        timeout=120,
         ).configurable_fields(
         model_name=ConfigurableField(
             id="model",
@@ -48,6 +49,9 @@ try:
         ),
         openai_api_version=ConfigurableField(
             id="api_version",
+        ),
+        request_timeout=ConfigurableField(
+            id="timeout"
         )
     )
 except Exception as e:
@@ -63,6 +67,7 @@ openrouterModel = ChatOpenAI(
     temperature=0.2,
     top_p=0.1,
     model_name="openai/o3-mini",
+    timeout=120,
     ).configurable_fields(
     model_name=ConfigurableField(
         id="opr_model",
@@ -78,6 +83,9 @@ openrouterModel = ChatOpenAI(
     ),
     openai_api_key=ConfigurableField( 
         id="opr_provider_api_key",
+    ),
+    request_timeout=ConfigurableField(
+        id="opr_timeout"
     )
 )
 

@@ -67,7 +67,9 @@ def main():
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
-    parser.add_argument("--timeout", type=int, default=600, help="Timeout for each query in seconds. Default is 600 (10 minutes).")
+    parser.add_argument("--timeout", type=int, default=300, help="Timeout for each query in seconds. Default is 600 (10 minutes).")
+    parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 (2 minutes).")
+    
 
     args = parser.parse_args()
 
@@ -109,18 +111,20 @@ def main():
 
     remaining_runs = total_runs - completed_runs
 
-    print("\n--- Experiment Configuration ---")
-    print(f"        Model: {args.modelName}")
-    print(f"  Temperature: {args.temp}")
-    print(f"        Top_p: {args.top_p}")
-    print(f"     # Trials: {args.numTrials}")
-    print(f"  Output File: {args.outfile}")
-    print(f"  File Exists: {outfile_exists}")
-    print(f" Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
-    print(f" Provider URL: {args.provider_url}")
-    print(f"    Use Azure: {'ENABLED' if args.useAzure else 'Disabled'}")
+    print("\n------ Experiment Configuration ------")
+    print(f"                    Model: {args.modelName}")
+    print(f"              Temperature: {args.temp}")
+    print(f"                    Top_p: {args.top_p}")
+    print(f"                 # Trials: {args.numTrials}")
+    print(f"              Output File: {args.outfile}")
+    print(f"              File Exists: {outfile_exists}")
+    print(f"             Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
+    print(f"             Provider URL: {args.provider_url}")
+    print(f"                Use Azure: {'ENABLED' if args.useAzure else 'Disabled'}")
+    print(f" Single LLM Query Timeout: {args.single_llm_timeout} seconds")
+    print(f"  .          otal Timeout: {args.timeout} seconds")
     if args.useAzure:
-        print(f"  API Version: {args.api_version}")
+        print(f"              API Version: {args.api_version}")
     print("---------------------------------")
     print(f" Total Kernels: {total_kernels}")
     print(f"    Total Runs: {total_runs}")
@@ -176,10 +180,11 @@ def main():
                         "temp": args.temp,
                         "provider_api_key": os.getenv("AZURE_OPENAI_API_KEY"),
                         "api_version": args.api_version,
+                        "timeout": args.single_llm_timeout,
                         "input_problem": combined_name,
                         "verbose_printing": args.verbose
                     },
-                    "recursion_limit": 100,  
+                    "recursion_limit": 20,  
                 }
             else:
                 config = {
@@ -189,11 +194,12 @@ def main():
                         "opr_model": args.modelName,
                         "opr_top_p": args.top_p,
                         "opr_temp": args.temp,
-                        "ope_provider_api_key": os.getenv("OPENAI_API_KEY"),
+                        "opr_provider_api_key": os.getenv("OPENAI_API_KEY"),
+                        "opr_timeout": args.single_llm_timeout,
                         "input_problem": combined_name,
                         "verbose_printing": args.verbose
                     },
-                    "recursion_limit": 100,  
+                    "recursion_limit": 20,  
                 }
             
 
