@@ -159,6 +159,33 @@ def download_files_for_some_targets(targets):
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
 
+        elif basename == 'opticalFlow-':
+            if not os.path.isfile(f'{srcDir}/frame10.ppm'):
+                command = f'wget --no-check-certificate https://github.com/NVIDIA/cuda-samples/raw/c94ff366aed18c797b8a85dfaac7817b0228b420/Samples/5_Domain_Specific/HSOpticalFlow/data/frame10.ppm && mv ./frame10.ppm {srcDir}/'
+                result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
+                assert result.returncode == 0
+            if not os.path.isfile(f'{srcDir}/frame11.ppm'):
+                command = f'wget --no-check-certificate https://github.com/NVIDIA/cuda-samples/raw/c94ff366aed18c797b8a85dfaac7817b0228b420/Samples/5_Domain_Specific/HSOpticalFlow/data/frame11.ppm && mv ./frame11.ppm {srcDir}/'
+                result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
+                assert result.returncode == 0
+
+        elif basename == 'tsne-':
+            if not os.path.isfile(f'{srcDir}/data/points.txt'):
+                command = f'wget --no-check-certificate https://raw.githubusercontent.com/oneapi-src/Velocity-Bench/refs/heads/main/tsne/data/points.txt && mv ./points.txt {srcDir}/data/points.txt'
+                result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
+                assert result.returncode == 0
+
+        elif basename == 'tpacf-':
+            # this only downloads the two files necessary for the beginning of the program to hit the kernels for profiling
+            if not os.path.isfile(f'{srcDir}/data/small/Datapnts.1'):
+                command = f'wget --no-check-certificate https://raw.githubusercontent.com/fengzhangcs/CoRunBench/refs/heads/master/parboil/datasets/tpacf/small/input/Datapnts.1 && mv ./Datapnts.1 {srcDir}/data/small/Datapnts.1'
+                result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
+                assert result.returncode == 0
+            if not os.path.isfile(f'{srcDir}/data/small/Randompnts'):
+                command = f'wget --no-check-certificate https://raw.githubusercontent.com/fengzhangcs/CoRunBench/refs/heads/master/parboil/datasets/tpacf/small/input/Randompnts.1 && mv ./Randompnts.1 {srcDir}/data/small/Randompnts'
+                result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
+                assert result.returncode == 0
+
         elif basename == 'tsp-cuda':
             if not os.path.isfile(f'{srcDir}/d493.tsp'):
                 command = f'wget --no-check-certificate http://comopt.ifi.uni-heidelberg.de/software/TSPLIB95/tsp/d493.tsp.gz && gunzip ./d493.tsp.gz && mv ./d493.tsp {srcDir}/'
@@ -252,6 +279,12 @@ def download_files_for_some_targets(targets):
                 assert result.returncode == 0
 
         elif (basename == 'gmm-omp'):
+            if not os.path.isfile(f'{srcDir}/data'):
+                command = f'tar -xf ./data.tar.gz' 
+                result = subprocess.run(command, cwd=f'{srcDir}', shell=True)
+                assert result.returncode == 0
+
+        elif (basename == 'gmm-cuda'):
             if not os.path.isfile(f'{srcDir}/data'):
                 command = f'tar -xf ./data.tar.gz' 
                 result = subprocess.run(command, cwd=f'{srcDir}', shell=True)
@@ -407,6 +440,8 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = '1000'
         elif (basename == 'mcmd-cuda') or (basename == 'mcmd-omp'):
             target['exeArgs'] = '../mcmd-cuda/dataset/mcmd.inp'
+        elif (basename == 'tpacf-cuda'):
+            target['exeArgs'] = '-d ./data/small/Datapnts.1 -p 97178 -r ./data/small/Randompnts -n 100 -q 97178 -b 5 -l 1 -u 10000 -a -j 10 -o ./small_results_test.dat'
 
 
     return targets
