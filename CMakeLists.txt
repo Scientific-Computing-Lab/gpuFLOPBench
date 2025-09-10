@@ -357,7 +357,7 @@ ENDIF()
 set(IGNORE_TARGETS allreduce-cuda ccl-cuda diamond-cuda langford-cuda 
                    miniWeather-cuda minibude-cuda pingpong-cuda si-cuda
                    qkv-cuda rowwiseMoments-cuda saxpy-ompt-cuda slit-cuda sparkler-cuda
-                   lzss-cuda cmp-cuda cc-cuda sss-cuda streamUM-cuda stsg-cuda testSNAP-cuda
+                   lzss-cuda cmp-cuda cc-cuda sss-cuda streamUM-cuda stsg-cuda 
                    bscan-cuda feynman-kac-cuda lrn-cuda cm-cuda voxelization-cuda mpc-cuda
                    stencil3d-cuda tridiagonal-cuda dwconv1d-cuda convolutionDeformable-cuda
                    halo-finder-cuda local-ht-cuda miniDGS-cuda xlqc-cuda mallocFree-cuda interval-cuda
@@ -1452,6 +1452,8 @@ IF (BUILD_ALL)
 
         target_compile_options(su3-cuda PRIVATE "-DMILC_COMPLEX")
 
+        target_include_directories(testSNAP-cuda PRIVATE "${HECBENCH_SRC_DIR}/testSNAP-omp")
+        target_compile_options(testSNAP-cuda PRIVATE "-DREFDATA_TWOJ=14")
 
         #FILE(GLOB TPACF_CU_FILES "${HECBENCH_SRC_DIR}/tpacf-cuda/*.cu")
         #target_sources(tpacf-cuda PRIVATE ${TPACF_CU_FILES})

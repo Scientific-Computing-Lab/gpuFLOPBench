@@ -92,7 +92,14 @@ def download_files_for_some_targets(targets):
         basename = target['basename']
         srcDir = target['src']
 
-        if basename == 'gc-cuda':
+        if 'floydwarshall2-cuda' in basename:
+            tFile = os.path.normpath(f'{srcDir}/CollegeMsg.egr')
+            command = f'tar -xf ./data.tar.gz'
+            if not os.path.isfile(tFile):
+                result = subprocess.run(command, cwd=srcDir, shell=True)
+                assert result.returncode == 0
+
+        elif basename == 'gc-cuda':
             tFile = f'{srcDir}/../mis-cuda/internet.egr'
             command = f'wget --no-check-certificate https://userweb.cs.txstate.edu/~burtscher/research/ECLgraph/internet.egr && mv ./internet.egr {srcDir}/../mis-cuda/'
             run_setup_command_for_file(tFile, command)
@@ -213,6 +220,12 @@ def download_files_for_some_targets(targets):
                 result = subprocess.run(command, cwd=srcDir, shell=True)
                 assert result.returncode == 0
 
+        elif basename == 'graphB+-cuda':
+            if not os.path.isfile(f'{srcDir}/graph.csv'):
+                command = f'tar -xf ./graph.tar.gz'
+                result = subprocess.run(command, cwd=srcDir, shell=True)
+                assert result.returncode == 0
+
         elif (basename == 'haversine-cuda') or (basename == 'geodesic-cuda'):
             if not os.path.isfile(f'{srcDir}/../geodesic-sycl/locations.txt'):
                 command = f'tar -xf ../geodesic-sycl/locations.tar.gz'
@@ -234,6 +247,12 @@ def download_files_for_some_targets(targets):
         elif basename == 'mcpr-cuda':
             if not os.path.isfile(f'{srcDir}/alphas.csv'):
                 command = f'bunzip2 alphas.csv.bz2'
+                result = subprocess.run(command, cwd=srcDir, shell=True)
+                assert result.returncode == 0
+
+        elif basename == 'resnet-kernels-cuda':
+            if not os.path.isfile(f'{srcDir}/data/bias_128.bin'):
+                command = f'mkdir ./data && python3 data_generator.py'
                 result = subprocess.run(command, cwd=srcDir, shell=True)
                 assert result.returncode == 0
 
@@ -442,6 +461,10 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = '../mcmd-cuda/dataset/mcmd.inp'
         elif (basename == 'tpacf-cuda'):
             target['exeArgs'] = '-d ./data/small/Datapnts.1 -p 97178 -r ./data/small/Randompnts -n 100 -q 97178 -b 5 -l 1 -u 10000 -a -j 10 -o ./small_results_test.dat'
+        elif (basename == 'floydwarshall2-cuda'):
+            target['exeArgs'] = 'CollegeMsg.egr 1000'
+        elif (basename == 'graphB+-cuda'):
+            target['exeArgs'] = 'graph.csv 10000 output'
 
 
     return targets
