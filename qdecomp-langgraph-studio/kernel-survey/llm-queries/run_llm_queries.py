@@ -68,8 +68,8 @@ def main():
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
     parser.add_argument("--timeout", type=int, default=600, help="Timeout for each query in seconds. Default is 600 (10 minutes).")
-    parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 (2 minutes).")
-    
+    parser.add_argument("--single_llm_timeout", type=int, default=60, help="Timeout for a single llm query in seconds. Default is 60 secs (1 minute).")
+
 
     args = parser.parse_args()
 
@@ -208,6 +208,11 @@ def main():
             start_time = time.time()
             try:
                 signal.alarm(args.timeout)  # Set the alarm for the specified timeout
+
+                # hidden property to set the timeout for each step in the graph
+                # we tack on 5 seconds to allow for overhead beyond the single llm call
+                graph.step_timeout = args.single_llm_timeout + 5
+
                 # Run the graph workflow
                 result = graph.invoke({}, config=config)
                 signal.alarm(0)  # Disable the alarm

@@ -327,6 +327,10 @@ ENDIF()
 # mallocFree-omp and mallocFree-cuda doesn't actually do any compute, it has no kernels that get offloaded
 # layernorm-cuda using nvrtc intrinsics that are not easily found by clang
 # lda-cuda having an LLVM intrinsics error
+# ssim-cuda, sobol-omp, bn-omp get some SIGKILL (9) error during execution -- need to debug
+# pns-omp, qtclustering-omp, dct8x8-omp, stencil3d-omp, frechet-omp illegal memory access error in cuStreamSynchronize
+
+# bn-cuda runs fine without `ncu` but with `ncu` it gets a SIGNAL 9 error
 
 # SIGNAL 137 Out-of-memory (OOM)
 # mpc-cuda lrn-cuda feynman-kac-cuda bscan-cuda 
@@ -354,17 +358,18 @@ ENDIF()
 # strange issue with __host__ __device__ variants not genreating correctly
 # xsbench-cuda
 
-set(IGNORE_TARGETS allreduce-cuda ccl-cuda diamond-cuda langford-cuda 
-                   miniWeather-cuda minibude-cuda pingpong-cuda si-cuda
+set(IGNORE_TARGETS allreduce-cuda bn-cuda ccl-cuda diamond-cuda langford-cuda 
+                   miniWeather-cuda minibude-cuda pingpong-cuda si-cuda ssim-cuda
                    qkv-cuda rowwiseMoments-cuda saxpy-ompt-cuda slit-cuda sparkler-cuda
                    lzss-cuda cmp-cuda cc-cuda sss-cuda streamUM-cuda stsg-cuda 
                    bscan-cuda feynman-kac-cuda lrn-cuda cm-cuda voxelization-cuda mpc-cuda
                    stencil3d-cuda tridiagonal-cuda dwconv1d-cuda convolutionDeformable-cuda
                    halo-finder-cuda local-ht-cuda miniDGS-cuda xlqc-cuda mallocFree-cuda interval-cuda
                    layernorm-cuda  lda-cuda logic-rewrite-cuda sobol-cuda xsbench-cuda
-                   blas-gemm-omp cm-omp fsm-omp interval-omp langford-omp mallocFree-omp memcpy-omp
-                   miniWeather-omp saxpy-ompt-hip saxpy-ompt-sycl xlqc-omp cmp-omp face-omp channelShuffle-omp
-                   debayer-omp dense-embedding-omp lrn-omp linearprobing-omp pointwise-omp)
+                   blas-gemm-omp bn-omp cm-omp fsm-omp interval-omp langford-omp mallocFree-omp memcpy-omp
+                   dct8x8-omp stencil3d-omp frechet-omp
+                   miniWeather-omp saxpy-ompt-hip saxpy-ompt-sycl sobol-omp xlqc-omp cmp-omp face-omp channelShuffle-omp
+                   debayer-omp dense-embedding-omp lrn-omp linearprobing-omp pns-omp pointwise-omp qtclustering-omp)
 
 IF (BUILD_CUDA)
     # if we're using IBM-Power9 on the host system
@@ -1448,7 +1453,7 @@ IF (BUILD_ALL)
         #target_compile_options(streamUM-cuda PRIVATE "-fopenmp=libomp")
         #target_compile_options(streamUM-cuda PRIVATE "-I${OMP_INCLUDE_DIR}" "-rpath /usr/lib/llvm-18/lib" )
 
-        target_compile_options(ssim-cuda PRIVATE "-D__NVCC__" "-D__CUDACC__")
+        #target_compile_options(ssim-cuda PRIVATE "-D__NVCC__")
 
         target_compile_options(su3-cuda PRIVATE "-DMILC_COMPLEX")
 

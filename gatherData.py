@@ -465,6 +465,8 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = 'CollegeMsg.egr 1000'
         elif (basename == 'graphB+-cuda'):
             target['exeArgs'] = 'graph.csv 10000 output'
+        elif (basename == 'atomicCost-cuda'):
+            target['exeArgs'] = '16 10'
 
 
     return targets
@@ -815,6 +817,17 @@ def execute_target(target:dict, kernelName:str):
 
     assert execResult.returncode == 0, f'Execution error: {execResult.stdout.decode("UTF-8")}'
 
+    reportFileResults = read_ncu_rep_file(reportFileName, srcDir)
+
+    if reportFileResults is None:
+        print(f'\tNo report file generated! -- Kernel [{kernelName}] must not have been invoked during execution!')
+
+    return (execResult, reportFileResults)
+
+
+
+def read_ncu_rep_file(reportFileName:str, srcDir:str):
+
     # check that the ncu-rep was generated. We'll still get a 0 returncode when it doesn't generate an ncu-rep file
     if os.path.isfile(f'{srcDir}/{reportFileName}.ncu-rep'):
         csvCommand = f'ncu --import {reportFileName}.ncu-rep --csv --print-units base --page raw'
@@ -823,12 +836,11 @@ def execute_target(target:dict, kernelName:str):
 
         assert rooflineResults.returncode == 0, f'Roofline parsing error: {rooflineResults.stdout.decode("UTF-8")}'
 
-        return (execResult, rooflineResults)
+        return rooflineResults
 
     else:
-        print(f'\tNo report file generated! -- Kernel [{kernelName}] must not have been invoked during execution!')
         # if the report file didn't get generated, return null, indicating the kernel doesn't exist
-        return (None, None)
+        return None
 
 
 def roofline_results_to_df(rooflineResults):
@@ -938,7 +950,7 @@ def has_already_been_sampled(basename:str, kernelName:str, df:pd.DataFrame):
     return subset.shape[0] > 0
 
 
-def execute_targets(targets:list, dfFilename:str):
+def execute_targets(targets:list, dfFilename:str, skipRuns:bool=False):
     # this will gather the data for the targets into a dataframe for saving
     # if a code can not be executed, we will skip it
 
@@ -953,6 +965,7 @@ def execute_targets(targets:list, dfFilename:str):
         basename = target['basename']
         kernelNames = target['kernelNames']
         exeArgs = target['exeArgs']
+        srcDir = target['src']
         
         # if the program doesn't define any kernels locally
         if len(kernelNames) == 0:
@@ -966,29 +979,60 @@ def execute_targets(targets:list, dfFilename:str):
                 print(f'Skipping {basename}:[{kernelName}] due to having already been sampled!')
                 continue
 
-            execResult, rooflineResult = execute_target(target, kernelName)
+            roofDF = None
+
+            if not skipRuns:
+                execResult, rooflineResult = execute_target(target, kernelName)
             
-            if execResult != None:
-                stdout = execResult.stdout.decode('UTF-8')
-                assert execResult.returncode == 0, f'error in execution!\n {stdout}'
+                if execResult != None:
+                    stdout = execResult.stdout.decode('UTF-8')
+                    assert execResult.returncode == 0, f'error in execution!\n {stdout}'
 
-                rawDF = roofline_results_to_df(rooflineResult)
-                roofDF = calc_roofline_data(rawDF)
+                    rawDF = roofline_results_to_df(rooflineResult)
+                    roofDF = calc_roofline_data(rawDF)
 
-                subset = roofDF[['Kernel Name', 'traffic', 'dpAI', 'spAI', 'dpPerf', 'spPerf', 'xtime', 'Block Size', 'Grid Size', 'device', 'intops', 'intPerf', 'intAI']].copy()
-                subset['targetName'] = basename
-                subset['exeArgs'] = exeArgs
-                subset['kernelName'] = kernelName
 
-            # if the return value is None, the kernel wasn't executed,
-            # so we will add it to the database, but with all NaN values to
-            # indicate the kernel doesn't get executed and so we skip it
-            # if we try to re-run data gathering
+                # if the return value is None, the kernel wasn't executed,
+                # so we will add it to the database, but with all NaN values to
+                # indicate the kernel doesn't get executed and so we skip it
+                # if we try to re-run data gathering
+                else:
+                    # doing this now to skip failing runs
+                    continue
+                    dataDict = {'targetName':[basename], 'exeArgs':[exeArgs], 'kernelName':[kernelName]}
+                    subset = pd.DataFrame(dataDict)
+
+            # if we skip the run, read the nsys-rep files
             else:
-                # doing this now to skip failing runs
-                continue
-                dataDict = {'targetName':[basename], 'exeArgs':[exeArgs], 'kernelName':[kernelName]}
-                subset = pd.DataFrame(dataDict)
+                ncu_rep_files = list(glob.glob(f"{srcDir}/**/*]-report.ncu-rep", recursive=True))
+                #print("number of ncu-rep files found:", len(ncu_rep_files))
+                #print(ncu_rep_files[0])
+                for file in ncu_rep_files:
+                    srcDir = os.path.dirname(os.path.abspath(file))
+                    filename = os.path.basename(file)[:-len('.ncu-rep')]
+                    # extract the kernel name from the filename
+                    kName = filename.split('[')[1].split(']')[0].strip()
+
+                    assert kName != ''
+                    print(f'Checking for kernel [{kernelName}] -- found [{kName}]')
+                    if kName == kernelName:
+                        repfileResult = read_ncu_rep_file(filename, srcDir)
+
+                        assert repfileResult is not None, f'Error reading ncu-rep file {filename} in {srcDir}'
+
+                        if repfileResult is not None:
+                            rawDF = roofline_results_to_df(repfileResult)
+                            roofDF = calc_roofline_data(rawDF)
+                            break
+
+                if roofDF is None:
+                    print(f'SKIPERROR Could not find ncu-rep file for {basename}-[{kernelName}] -- skipping!')
+                    continue
+    
+            subset = roofDF[['Kernel Name', 'traffic', 'dpAI', 'spAI', 'dpPerf', 'spPerf', 'xtime', 'Block Size', 'Grid Size', 'device', 'intops', 'intPerf', 'intAI']].copy()
+            subset['targetName'] = basename
+            subset['exeArgs'] = exeArgs
+            subset['kernelName'] = kernelName
 
             df = pd.concat([df, subset], ignore_index=True)
             # this does do a lot of redundant writing, but we only expect at most 10k samples, so 
@@ -1100,9 +1144,34 @@ def main():
     parser.add_argument('--targets', type=list, required=False, default=None, help='Optional subset of targets to run')
     parser.add_argument('--forceRerun', action=argparse.BooleanOptionalAction, help='Whether to forcibly re-run already-gathered programs')
     parser.add_argument('--skipRodiniaDownload', action=argparse.BooleanOptionalAction, help='Skip downloading rodinia dataset')
+    parser.add_argument('--skipRuns', action=argparse.BooleanOptionalAction, help='Skip running the benchmarks, just read the ncu-rep files if they exist and gather data from them')
 
 
     args = parser.parse_args()
+
+    #if args.skipRuns:
+        ## go through all the src directories and find all the ncu-rep files
+        #ncu_rep_files = list(glob.glob(f"{args.srcDir}/**/*]-report.ncu-rep", recursive=True))
+        #print("number of ncu-rep files found:", len(ncu_rep_files))
+        #print(ncu_rep_files[0])
+        #for file in ncu_rep_files:
+            #srcDir = os.path.dirname(os.path.abspath(file))
+            #filename = os.path.basename(file)
+
+            #repfileResult = read_ncu_rep_file(filename, srcDir)
+            #if repfileResult is not None:
+                #rawDF = roofline_results_to_df(repfileResult)
+                #roofDF = calc_roofline_data(rawDF)
+
+                #subset = roofDF[['Kernel Name', 'traffic', 'dpAI', 'spAI', 'dpPerf', 'spPerf', 'xtime', 'Block Size', 'Grid Size', 'device', 'intops', 'intPerf', 'intAI']].copy()
+                #subset['targetName'] =  
+                #subset['exeArgs'] = exeArgs
+                #subset['kernelName'] = kernelName
+                #print(roofDF)
+            #else:
+                #print(f'No report file generated for {file}!')
+
+            #return
 
     setup_dirs(args.buildDir, args.srcDir)
 
@@ -1118,12 +1187,14 @@ def main():
 
     targets = get_runnable_targets()
 
-    download_files_for_some_targets(targets)
+    if not args.skipRuns:
+        download_files_for_some_targets(targets)
 
     targets = get_exe_args(targets)
     targets = modify_exe_args_for_some_targets(targets)
 
-    check_and_unzip_input_files(targets)
+    if not args.skipRuns:
+        check_and_unzip_input_files(targets)
 
     targets = get_kernel_names(targets)
 
@@ -1142,10 +1213,10 @@ def main():
 
     #targets = targets[:70]
 
-    pprint(targets)
+    #pprint(targets)
 
     #results = execute_targets(omp_targets, args.outfile)
-    results = execute_targets(targets, args.outfile)
+    results = execute_targets(targets, args.outfile, args.skipRuns)
 
     return
 
