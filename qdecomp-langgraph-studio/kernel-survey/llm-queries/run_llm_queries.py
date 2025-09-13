@@ -67,8 +67,8 @@ def main():
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
-    parser.add_argument("--timeout", type=int, default=600, help="Timeout for each query in seconds. Default is 600 (10 minutes).")
-    parser.add_argument("--single_llm_timeout", type=int, default=60, help="Timeout for a single llm query in seconds. Default is 60 secs (1 minute).")
+    parser.add_argument("--timeout", type=int, default=900, help="Timeout for each query in seconds. Default is 900 (15 minutes).")
+    parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 secs (2 minutes).")
 
 
     args = parser.parse_args()

@@ -57,9 +57,9 @@ def get_query_cost(response, verbose: bool = False):
     #state["total_cost"] += io_cost
 
     if verbose:
-        print("This cost:", io_cost)
-        print("Input tokens for this query:", input_tokens)
-        print("Output tokens for this query:", output_tokens)
+        print("This cost:", io_cost, flush=True)
+        print("Input tokens for this query:", input_tokens, flush=True)
+        print("Output tokens for this query:", output_tokens, flush=True)
 
     return {"input_tokens": [input_tokens],
             "output_tokens": [output_tokens],

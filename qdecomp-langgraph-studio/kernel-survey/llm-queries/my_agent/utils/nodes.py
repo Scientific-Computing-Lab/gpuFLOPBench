@@ -55,8 +55,8 @@ try:
         )
     )
 except Exception as e:
-    print(f"Azure model could not be setup correctly! Falling back to OpenAI model in its place.")
-    print(f"Error: {e}")
+    print(f"Azure model could not be setup correctly! Falling back to OpenAI model in its place.", flush=True)
+    print(f"Error: {e}", flush=True)
 
     azureModel = ChatOpenAI()
 
@@ -156,9 +156,9 @@ def get_input_problem(state: KernelAnalysisState, config):
 
     #print(exeArgs_list)
     if verbose:
-        print("---------- BEGIN STEP 0: Input ARGV Propagation ----------")
-        print(reorganized_source)
-        print("---------- END STEP 0: Input ARGV Propagation ----------")
+        print("---------- BEGIN STEP 0: Input ARGV Propagation ----------", flush=True)
+        print(reorganized_source, flush=True)
+        print("---------- END STEP 0: Input ARGV Propagation ----------", flush=True)
 
     return {'source_code' : reorganized_source, 
             'combined_name' : row['combined_name'],
@@ -206,6 +206,9 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
     if len(state["step1_messages"]) != 0:
         msg_history = state["step1_messages"]
         concretizationState = state["concretizationState"]
+
+        if verbose:
+            print(f"\tSTEP (1) FEEDBACK. Total Num Messages: [{len(msg_history)}]", flush=True)
 
         error_msg = ChatPromptTemplate.from_messages(msg_history + [
              ("assistant",
@@ -261,6 +264,10 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
             "concretization_rules": concretization_rules,
         }
 
+        if verbose:
+            print("\n\n\n", flush=True)
+            print("---------- BEGIN STEP 1: Source Code Concretization ----------", flush=True)
+
         result = chain.invoke(inputs)
 
         updated_source = result.content
@@ -268,11 +275,9 @@ def src_input_args_concretizer(state: KernelAnalysisState, config):
         updated_costs = get_query_cost(result, verbose)
 
         if verbose:
-            print("\n\n\n")
-            print("---------- BEGIN STEP 1: Source Code Concretization ----------")
-            print(f"\n{updated_source}\n")
-            print("---------- END STEP 1: Source Code Concretization ----------")
-            print("\n\n\n")
+            print(f"\n{updated_source}\n", flush=True)
+            print("---------- END STEP 1: Source Code Concretization ----------", flush=True)
+            print("\n\n\n", flush=True)
 
         return updated_costs | {"src_concretized_input_args": updated_source,
                 "step1_messages": prompt.format_messages(**inputs) + [result]}
@@ -313,6 +318,9 @@ def concretization_checker(state: KernelAnalysisState, config):
 
     resultState = result['parsed']
 
+    if verbose:
+        print(f"\tSTEP (1) Concretization Checker Result: [{resultState.status}]", flush=True)
+
     updated_costs = get_query_cost(result['raw'], verbose)
 
     return updated_costs | {"concretizationState": resultState}
@@ -348,6 +356,9 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
     if len(state["step2_messages"]) != 0:
         msg_history = state["step2_messages"]
         singleKernelState = state["srcSingleKernelState"]
+
+        if verbose:
+            print(f"\tSTEP (2) FEEDBACK. Total Num Messages: [{len(msg_history)}]", flush=True)
 
         error_msg = ChatPromptTemplate.from_messages(msg_history + [
              ("assistant",
@@ -401,6 +412,10 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
             "step2_example_after": step2_example_after,
         }
 
+        if verbose:
+            print("\n\n\n", flush=True)
+            print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------", flush=True)
+
         result = chain.invoke(inputs)
 
         single_kernel_source = result.content
@@ -408,11 +423,9 @@ def src_single_kernel_execution_modifier(state: KernelAnalysisState, config):
         updated_costs = get_query_cost(result, verbose)
 
         if verbose:
-            print("\n\n\n")
-            print("---------- BEGIN STEP 2: Single Kernel Execution Modification ----------")
-            print(f"\n{single_kernel_source}\n")
-            print("---------- END STEP 2: Single Kernel Execution Modification ----------")
-            print("\n\n\n")
+            print(f"\n{single_kernel_source}\n", flush=True)
+            print("---------- END STEP 2: Single Kernel Execution Modification ----------", flush=True)
+            print("\n\n\n", flush=True)
 
         return updated_costs | {"src_single_kernel_execution": single_kernel_source, 
                 "step2_messages": prompt.format_messages(**inputs) + [result]}
@@ -447,6 +460,9 @@ def single_kernel_execution_checker(state: KernelAnalysisState, config):
     result = chain.invoke({})
 
     resultState = result['parsed']
+
+    if verbose:
+        print(f"\tSTEP (2) Concretization Checker Result: [{resultState.status}]", flush=True)
 
     updated_costs = get_query_cost(result['raw'], verbose)
 
@@ -531,6 +547,10 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
         "total_num_threads": state["total_num_threads"], 
     }
 
+    if verbose:
+        print("\n\n\n", flush=True)
+        print("---------- BEGIN STEP 3: First Kernel Invocation Snippet Extraction ----------", flush=True)
+
     result = chain.invoke(inputs)
 
     first_kernel_invocation = result.content
@@ -538,11 +558,9 @@ exampleKernel<DataType=float, KERNEL_STENCIL_SIZE=3><<<gridSize=(65536, 1, 1), b
     updated_costs = get_query_cost(result, verbose)
 
     if verbose:
-        print("\n\n\n")
-        print("---------- BEGIN STEP 3: First Kernel Invocation Snippet Extraction ----------")
-        print(f"\n{first_kernel_invocation}\n")
-        print("---------- END STEP 3: First Kernel Invocation Snippet Extraction ----------")
-        print("\n\n\n")
+        print(f"\n{first_kernel_invocation}\n", flush=True)
+        print("---------- END STEP 3: First Kernel Invocation Snippet Extraction ----------", flush=True)
+        print("\n\n\n", flush=True)
 
     return updated_costs | {"snippet_first_kernel_invocation": first_kernel_invocation}
 
@@ -577,6 +595,10 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
         "total_num_threads": state["total_num_threads"], 
     }
 
+    if verbose:
+        print("\n\n\n", flush=True)
+        print("---------- BEGIN STEP 4: Kernel Source Snippet Extraction ----------", flush=True)
+
     result = chain.invoke(inputs)
 
     kernel_source_snippet = result.content
@@ -584,11 +606,9 @@ def kernel_source_snippet_extractor(state: KernelAnalysisState, config):
     updated_costs = get_query_cost(result, verbose)
 
     if verbose:
-        print("\n\n\n")
-        print("---------- BEGIN STEP 4: Kernel Source Snippet Extraction ----------")
-        print(f"\n{kernel_source_snippet}\n")
-        print("---------- END STEP 4: Kernel Source Snippet Extraction ----------")
-        print("\n\n\n")
+        print(f"\n{kernel_source_snippet}\n", flush=True)
+        print("---------- END STEP 4: Kernel Source Snippet Extraction ----------", flush=True)
+        print("\n\n\n", flush=True)
 
     return updated_costs | {"snippet_kernel_src": kernel_source_snippet}
 
@@ -684,11 +704,11 @@ def kernel_source_snippet_concretizer(state: KernelAnalysisState, config):
         updated_costs = get_query_cost(result, verbose)
 
         if verbose:
-            print("\n\n\n")
-            print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------")
-            print(f"\n{snippet_kernel_src_concretized_values}\n")
-            print("---------- END STEP 5: Kernel Source Code Concretization ----------")
-            print("\n\n\n")
+            print("\n\n\n", flush=True)
+            print("---------- BEGIN STEP 5: Kernel Source Code Concretization ----------", flush=True)
+            print(f"\n{snippet_kernel_src_concretized_values}\n", flush=True)
+            print("---------- END STEP 5: Kernel Source Code Concretization ----------", flush=True)
+            print("\n\n\n", flush=True)
 
         return updated_costs | {"snippet_kernel_src_concretized_values": snippet_kernel_src_concretized_values,
                 "step5_messages": prompt.format_messages(**inputs) + [result]}
@@ -799,11 +819,11 @@ def kernel_warp_divergence_annotator(state: KernelAnalysisState, config):
     updated_costs = get_query_cost(result, verbose)
 
     if verbose:
-        print("\n\n\n")
-        print("---------- BEGIN STEP 6: Kernel Warp Divergence Annotation ----------")
-        print(f"\n{kernel_annotated_warp_divergence}\n")
-        print("---------- END STEP 6: Kernel Warp Divergence Annotation ----------")
-        print("\n\n\n")
+        print("\n\n\n", flush=True)
+        print("---------- BEGIN STEP 6: Kernel Warp Divergence Annotation ----------", flush=True)
+        print(f"\n{kernel_annotated_warp_divergence}\n", flush=True)
+        print("---------- END STEP 6: Kernel Warp Divergence Annotation ----------", flush=True)
+        print("\n\n\n", flush=True)
 
     return updated_costs | {"kernel_annotated_warp_divergence": kernel_annotated_warp_divergence}
 
@@ -858,11 +878,11 @@ def kernel_wdp_variables_annotator(state: KernelAnalysisState, config):
     updated_costs = get_query_cost(result, verbose)
 
     if verbose:
-        print("\n\n\n")
-        print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------")
-        print(f"\n{kernel_annotated_WDPs}\n")
-        print("---------- END STEP 7: Kernel WDP Annotation ----------")
-        print("\n\n\n")
+        print("\n\n\n", flush=True)
+        print("---------- BEGIN STEP 7: Kernel WDP Annotation ----------", flush=True)
+        print(f"\n{kernel_annotated_WDPs}\n", flush=True)
+        print("---------- END STEP 7: Kernel WDP Annotation ----------", flush=True)
+        print("\n\n\n", flush=True)
 
     return updated_costs | {"kernel_annotated_WDPs": kernel_annotated_WDPs}
 
@@ -938,13 +958,13 @@ if (1)```\n\n"""
     updated_costs = get_query_cost(result['raw'], verbose)
 
     if verbose:
-        print("\n\n\n")
-        print("---------- BEGIN STEP 7a: WDP Extraction ----------")
-        print('Total number of WDPs extracted: ', len(wdps))
+        print("\n\n\n", flush=True)
+        print("---------- BEGIN STEP 7a: WDP Extraction ----------", flush=True)
+        print('Total number of WDPs extracted: ', len(wdps), flush=True)
         for wdp in wdps:
-            print(f"\nclassification: [{wdp.classification}]\nsource_code:[\n{wdp.source_code}]\n\n")
-        print("---------- END STEP 7a: WDP Extraction ----------")
-        print("\n\n\n")
+            print(f"\nclassification: [{wdp.classification}]\nsource_code:[\n{wdp.source_code}]\n\n", flush=True)
+        print("---------- END STEP 7a: WDP Extraction ----------", flush=True)
+        print("\n\n\n", flush=True)
 
     return updated_costs | {"wdps_list": wdps, "wdp_processing_index": 0, "wdps_num_executions": []}
 
@@ -961,24 +981,24 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     calculator_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(NumExecutions, include_raw=True)
 
     if verbose:
-        print("\t\t Current WDP Processing Index: ", state["wdp_processing_index"])
+        print("\t\t Current WDP Processing Index: ", state["wdp_processing_index"], flush=True)
 
     processing_idx = state["wdp_processing_index"]
     # sometimes the list is completely empty, so the processing_idx will be out of bounds
     if processing_idx >= len(state["wdps_list"]):
         if verbose:
-            print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
+            print("---------- END STEP 7b: WDP Number of Operations Calculation ----------", flush=True)
         return {}
 
     wdp = state["wdps_list"][processing_idx]
 
     if verbose:
         if processing_idx == 0:
-            print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------")
-        print("\n\n\n")
-        print(f"Processing WDP at index: {processing_idx}")
-        print(wdp)
-        print("\n\n\n")
+            print("---------- BEGIN STEP 7b: WDP Number of Operations Calculation ----------", flush=True)
+        print("\n\n\n", flush=True)
+        print(f"Processing WDP at index: {processing_idx}", flush=True)
+        print(wdp, flush=True)
+        print("\n\n\n", flush=True)
 
     condition_type = {'if': 'if', 'else-if': 'if', 'for': 'for', 'while': 'for', 'do-while': 'for', 'ternary': 'if'}.get(wdp.classification, None)
 
@@ -1035,16 +1055,16 @@ def wdp_num_executions_calculations(state: KernelAnalysisState, config):
     updated_costs = get_query_cost(result['raw'], verbose)
 
     if verbose:
-        print("\n")
-        print(f"\t\t [{processing_idx}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]") 
-        print("\n")
+        print("\n", flush=True)
+        print(f"\t\t [{processing_idx}] ({condition_type}) Number of Executions Calculation: [{num_executions.num_executions}]", flush=True) 
+        print("\n", flush=True)
 
     #new_executions = state["wdps_num_executions"] + [num_executions]
     new_executions = [num_executions]
 
     if verbose:
         if processing_idx+1 == len(state["wdps_list"]):
-            print("---------- END STEP 7b: WDP Number of Operations Calculation ----------")
+            print("---------- END STEP 7b: WDP Number of Operations Calculation ----------", flush=True)
 
     return updated_costs | {"wdps_num_executions": new_executions, 
                             "wdp_processing_index": 1}
@@ -1146,11 +1166,11 @@ def kernel_num_ops_annotator(state: KernelAnalysisState, config):
         updated_costs = get_query_cost(result, verbose)
 
         if verbose:
-            print("\n\n\n")
-            print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------")
-            print(f"\n{kernel_annotated_num_ops}\n")
-            print("---------- END STEP 8: Kernel Number of Operations Annotation ----------")
-            print("\n\n\n")
+            print("\n\n\n", flush=True)
+            print("---------- BEGIN STEP 8: Kernel Number of Operations Annotation ----------", flush=True)
+            print(f"\n{kernel_annotated_num_ops}\n", flush=True)
+            print("---------- END STEP 8: Kernel Number of Operations Annotation ----------", flush=True)
+            print("\n\n\n", flush=True)
 
         return updated_costs | {"kernel_annotated_num_ops": kernel_annotated_num_ops,
                 "step8_messages": prompt.format_messages(**inputs) + [result]}
@@ -1223,7 +1243,7 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
             wdps_string += f"\n{wdp.source_code.strip()}\nNumber of ({wdp.classification}) executions: {num_executions.num_executions}\n\n"
 
     if verbose:
-        print("WDPS STRING", wdps_string)
+        print("WDPS STRING", wdps_string, flush=True)
 
     flop_counts_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts, include_raw=True)
 
@@ -1261,11 +1281,11 @@ def kernel_ops_summarizer(state: KernelAnalysisState, config):
     updated_costs = get_query_cost(result['raw'], verbose)
 
     if verbose:
-        print("\n\n\n")
-        print("---------- BEGIN STEP 9: Kernel Operations Summary ----------")
-        print(f"\n{summed_kernel_ops}\n")
-        print("---------- END STEP 9: Kernel Operations Summary ----------")
-        print("\n\n\n")
+        print("\n\n\n", flush=True)
+        print("---------- BEGIN STEP 9: Kernel Operations Summary ----------", flush=True)
+        print(f"\n{summed_kernel_ops}\n", flush=True)
+        print("---------- END STEP 9: Kernel Operations Summary ----------", flush=True)
+        print("\n\n\n", flush=True)
 
     empirical_sp_flop_count = state["empirical_sp_flop_count"]
     empirical_dp_flop_count = state["empirical_dp_flop_count"]
@@ -1284,27 +1304,27 @@ def print_summary(state: KernelAnalysisState):
     output_tokens = state.get("output_tokens", 0)
     total_cost = state.get("total_cost", 0.0)
 
-    print("\n------- Execution Summary -------")
-    print(f"Combined Name: {state['combined_name']}\n")
-    print(f"Input Tokens: {sum(input_tokens)}")
-    print(f"Output Tokens: {sum(output_tokens)}")
-    print(f"Total Cost: ${sum(total_cost):.6f}")
+    print("\n------- Execution Summary -------", flush=True)
+    print(f"Combined Name: {state['combined_name']}\n", flush=True)
+    print(f"Input Tokens: {sum(input_tokens)}", flush=True)
+    print(f"Output Tokens: {sum(output_tokens)}", flush=True)
+    print(f"Total Cost: ${sum(total_cost):.6f}", flush=True)
 
-    print(f"Empirical SP-FLOP Count: {state['empirical_sp_flop_count']}")
-    print(f"Empirical DP-FLOP Count: {state['empirical_dp_flop_count']}\n")
+    print(f"Empirical SP-FLOP Count: {state['empirical_sp_flop_count']}", flush=True)
+    print(f"Empirical DP-FLOP Count: {state['empirical_dp_flop_count']}\n", flush=True)
 
-    print(f"Summed SP-FLOP Count: {state['summed_kernel_ops'].sp_flop_count}")
-    print(f"Summed DP-FLOP Count: {state['summed_kernel_ops'].dp_flop_count}\n")
+    print(f"Summed SP-FLOP Count: {state['summed_kernel_ops'].sp_flop_count}", flush=True)
+    print(f"Summed DP-FLOP Count: {state['summed_kernel_ops'].dp_flop_count}\n", flush=True)
 
-    print(f"SP-FLOP Difference: {state['sp_flop_diff']} ({state['sp_flop_perc_diff']:.2f}%)")
-    print(f"DP-FLOP Difference: {state['dp_flop_diff']} ({state['dp_flop_perc_diff']:.2f}%)\n")
+    print(f"SP-FLOP Difference: {state['sp_flop_diff']} ({state['sp_flop_perc_diff']:.2f}%)", flush=True)
+    print(f"DP-FLOP Difference: {state['dp_flop_diff']} ({state['dp_flop_perc_diff']:.2f}%)\n", flush=True)
 
-    print(f"SP-FLOP Percent Difference: {state['sp_flop_perc_diff']:.2f}%")
-    print(f"DP-FLOP Percent Difference: {state['dp_flop_perc_diff']:.2f}%\n")
+    print(f"SP-FLOP Percent Difference: {state['sp_flop_perc_diff']:.2f}%", flush=True)
+    print(f"DP-FLOP Percent Difference: {state['dp_flop_perc_diff']:.2f}%\n", flush=True)
 
-    print("Final Reasoning and Explanation for FLOP Counts:")
-    print(f"SP-FLOP Explanation: {state['summed_kernel_ops'].sp_flop_explanation}\n\n")
-    print(f"DP-FLOP Explanation: {state['summed_kernel_ops'].dp_flop_explanation}\n")
+    print("Final Reasoning and Explanation for FLOP Counts:", flush=True)
+    print(f"SP-FLOP Explanation: {state['summed_kernel_ops'].sp_flop_explanation}\n\n", flush=True)
+    print(f"DP-FLOP Explanation: {state['summed_kernel_ops'].dp_flop_explanation}\n", flush=True)
 
     print("-------------------------------")
 
