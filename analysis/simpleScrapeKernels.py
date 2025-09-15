@@ -56,7 +56,7 @@ def setup_dirs(buildDir, srcDir): #libclangPath):
     return
 
 
-def get_runnable_targets():
+def get_runnable_targets(cudaOnly=False, ompOnly=False):
     # gather a list of dictionaries storing executable names and source directories
     files = sorted(glob.glob(f'{BUILD_DIR}/*'))
     execs = []
@@ -64,6 +64,12 @@ def get_runnable_targets():
         # check we have a file and it's an executable
         if os.path.isfile(entry) and os.access(entry, os.X_OK):
             basename = os.path.basename(entry)
+
+            if '-cuda' in basename and ompOnly:
+                continue
+            elif '-omp' in basename and cudaOnly:
+                continue
+
             execSrcDir = os.path.abspath(f'{SRC_DIR}/{basename}')
 
             # check we have the source code too
@@ -502,6 +508,8 @@ def main():
     parser.add_argument('--srcDir', type=str, default='../src', help='Directory containing source files')
     parser.add_argument('--outfile', type=str, default='./simple-scraped-kernels-with-sass.json', help='Output JSON file')
     parser.add_argument('--skipSASS', action='store_true', default=False, help='Leave out SASS from the scrape')
+    parser.add_argument('--cudaOnly', action='store_true', default=False, help='Only include CUDA kernels')
+    parser.add_argument('--ompOnly', action='store_true', default=False, help='Only include OpenMP kernels')
 
     #parser.add_argument('--libclangPath', type=str, default='/usr/lib/llvm-18/lib/libclang-18.so.1', help='Path to the libclang.so library file')
 
@@ -511,7 +519,13 @@ def main():
 
     print('Starting CUDA kernel gathering process!')
 
-    targets = get_runnable_targets()
+    if args.cudaOnly:
+        targets = get_runnable_targets(cudaOnly=True)
+    elif args.ompOnly:
+        targets = get_runnable_targets(ompOnly=True)
+    else:
+        targets = get_runnable_targets()
+
     targets = get_kernel_names(targets)
     targets = modify_kernel_names_for_some_targets(targets)
 

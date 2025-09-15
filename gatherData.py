@@ -1149,30 +1149,6 @@ def main():
 
     args = parser.parse_args()
 
-    #if args.skipRuns:
-        ## go through all the src directories and find all the ncu-rep files
-        #ncu_rep_files = list(glob.glob(f"{args.srcDir}/**/*]-report.ncu-rep", recursive=True))
-        #print("number of ncu-rep files found:", len(ncu_rep_files))
-        #print(ncu_rep_files[0])
-        #for file in ncu_rep_files:
-            #srcDir = os.path.dirname(os.path.abspath(file))
-            #filename = os.path.basename(file)
-
-            #repfileResult = read_ncu_rep_file(filename, srcDir)
-            #if repfileResult is not None:
-                #rawDF = roofline_results_to_df(repfileResult)
-                #roofDF = calc_roofline_data(rawDF)
-
-                #subset = roofDF[['Kernel Name', 'traffic', 'dpAI', 'spAI', 'dpPerf', 'spPerf', 'xtime', 'Block Size', 'Grid Size', 'device', 'intops', 'intPerf', 'intAI']].copy()
-                #subset['targetName'] =  
-                #subset['exeArgs'] = exeArgs
-                #subset['kernelName'] = kernelName
-                #print(roofDF)
-            #else:
-                #print(f'No report file generated for {file}!')
-
-            #return
-
     setup_dirs(args.buildDir, args.srcDir)
 
     # let's check if rodinia has been downloaded, if not, download it
@@ -1180,7 +1156,7 @@ def main():
         if not args.skipRodiniaDownload:
             download_rodinia_and_extract()
         else:
-            print('[WARN] Rodinia not detected! User requested to skip rodinia dataset download! Some codes may fail on invocation!')
+            print('[WARN] User requested to skip rodinia dataset download! Some codes may fail on invocation!')
 
 
     print('Starting data gathering process!')
