@@ -3,13 +3,13 @@ import csv
 import argparse
 import pandas as pd
 from tqdm import tqdm
-from .my_agent.agent import graph
-from .my_agent.utils.dataset import df 
 import os
 import time
 import traceback
 import ast
 import signal
+from .dataset_and_llm import df_to_query as df
+from .agent import graph
 
 class TimeoutException(Exception):
     pass
@@ -55,7 +55,7 @@ def get_current_spend(filename: str) -> float:
 
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
-    parser.add_argument("--modelName", type=str, default="openai/gpt-4.1-mini", help="Language model name")
+    parser.add_argument("--modelName", type=str, default="openai/gpt-5-mini", help="Language model name")
     parser.add_argument("--provider_url", type=str, default="https://openrouter.com/api/v1", help="URL of the model provider")
     parser.add_argument("--useAzure", action='store_true', help="Enable Azure model usage.")
     parser.add_argument("--api_version", type=str, default=None, help="If using Azure, specify the API version.")
@@ -64,7 +64,7 @@ def main():
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
-    parser.add_argument("--timeout", type=int, default=900, help="Timeout for each query in seconds. Default is 900 (15 minutes).")
+    parser.add_argument("--timeout", type=int, default=120, help="Timeout for each query in seconds. Default is 120 (2 minutes).")
     parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 secs (2 minutes).")
 
 
@@ -74,7 +74,7 @@ def main():
     if args.outfile is None:
         model_name_sanitized = args.modelName.replace("/", "-")
         provider_name = "azure" if args.useAzure else "openrouter"
-        args.outfile = f"llm_query_dataset-{provider_name}--{model_name_sanitized}.csv"
+        args.outfile = f"llm_query_results-{provider_name}--{model_name_sanitized}.csv"
 
     if args.useAzure:
         assert args.api_version is not None, "When using Azure, --api_version must be specified."
@@ -142,6 +142,8 @@ def main():
     for trial in tqdm(range(1, args.numTrials + 1), desc="Trials"):
         for index, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Trial {trial}"):
             combined_name = row['combined_name']
+            nnz_flop_state = row['nnz_flop_state']
+            variant_type = row['variant']
 
             current_total_spend = get_current_spend(args.outfile)
             print(f"\nCurrent Total Spend: ${current_total_spend:.2f}\n")
@@ -151,6 +153,8 @@ def main():
                 # Check for successful (non-error) completion
                 existing_sample = existing_results_df [ 
                     (existing_results_df['combined_name'] == combined_name) & 
+                    (existing_results_df['nnz_flop_state'] == nnz_flop_state) & 
+                    (existing_results_df['variant'] == variant_type) & 
                     (existing_results_df['trial'] == trial) & 
                     (existing_results_df['modelName'] == args.modelName) &
                     (existing_results_df['top_p'] == args.top_p) &
@@ -178,7 +182,7 @@ def main():
                         "provider_api_key": os.getenv("AZURE_OPENAI_API_KEY"),
                         "api_version": args.api_version,
                         "timeout": args.single_llm_timeout,
-                        "input_problem": combined_name,
+                        "input_problem_row": row.to_dict(),
                         "verbose_printing": args.verbose
                     },
                     "recursion_limit": 20,  
@@ -193,7 +197,7 @@ def main():
                         "opr_temp": args.temp,
                         "opr_provider_api_key": os.getenv("OPENAI_API_KEY"),
                         "opr_timeout": args.single_llm_timeout,
-                        "input_problem": combined_name,
+                        "input_problem_row": row.to_dict(),
                         "verbose_printing": args.verbose
                     },
                     "recursion_limit": 20,  
@@ -218,6 +222,8 @@ def main():
                 result['trial'] = trial
                 result['combined_name'] = combined_name
                 result['modelName'] = args.modelName
+                result['nnz_flop_state'] = nnz_flop_state
+                result['variant'] = variant_type
                 result['top_p'] = args.top_p
                 result['temp'] = args.temp
                 result['totalQueryTime'] = end_time - start_time
@@ -244,6 +250,8 @@ def main():
                     'trial': trial,
                     'combined_name': combined_name, 
                     'modelName': args.modelName,
+                    'nnz_flop_state': nnz_flop_state,
+                    'variant': variant_type,
                     'top_p': args.top_p,
                     'temp': args.temp,
                     'totalQueryTime': end_time - start_time,

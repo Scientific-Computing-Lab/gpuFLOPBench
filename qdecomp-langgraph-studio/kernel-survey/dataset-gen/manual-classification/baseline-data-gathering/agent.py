@@ -1,17 +1,12 @@
 # make a langchain graph instance with the model
 from typing_extensions import TypedDict, List, Annotated, Literal
-from pydantic import BaseModel, Field
 from dataset_and_llm import llm
-from langchain.prompts import ChatPromptTemplate
-
-class FLOPCounts(BaseModel):
-    sp_flop_count: int = Field(..., description="Total number of single-precision floating point operations (SP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
-
-    sp_flop_explanation: str = Field(..., description="Explanation of how the single-precision floating point operations (SP-FLOP) count was calculated. This should include the reasoning behind the number of operations performed in the kernel, including any relevant loop iterations and warp divergence region executions.")
-
-    dp_flop_count: int = Field(..., description="Total number of double-precision floating point operations (DP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
-
-    dp_flop_explanation: str = Field(..., description="Explanation of how the double-precision floating point operations (DP-FLOP) count was calculated. This should include the reasoning behind the number of operations performed in the kernel, including any relevant loop iterations and warp divergence region executions.")
+from .prompts import make_prompt, FLOPCounts
+from .io_cost import get_query_cost
+import operator
+from langgraph.graph import StateGraph, END
+from langchain.schema import AIMessage
+from .configuration import Configuration
 
 class BaselineQueryState(TypedDict, total=False):
     source_code: str
@@ -21,13 +16,22 @@ class BaselineQueryState(TypedDict, total=False):
     grid_size: str
     block_size: str
     total_num_threads: str
+
     empirical_sp_flop_count: float
     empirical_dp_flop_count: float
 
-    flop_counts: FLOPCounts
+    prompt_type: Literal["full", "simple"]
+
+    raw_flop_counts: AIMessage
 
     predicted_sp_flop_count: int
     predicted_dp_flop_count: int
+    predicted_sp_flop_count_explanation: str
+    predicted_dp_flop_count_explanation: str
+    
+    input_tokens: Annotated[List[int], operator.add]
+    output_tokens: Annotated[List[int], operator.add]
+    total_cost: Annotated[List[float], operator.add]
 
 # Calculate the total number of threads from the gridSz and the blockSz
 # grid size is a string of format "(x, y, z)"
@@ -43,11 +47,12 @@ def get_input_problem(state: BaselineQueryState, config):
 
     row = config.get("configurable", {}).get("input_problem_row", None) 
 
+    prompt_type = config.get("configurable", {}).get("prompt_type", "simple")
+
     target_name = row['target_name']
 
     assert row is not None, f"Target problem '{target_name}' not found in the dataset."
 
-    #print(exeArgs_list)
     if verbose:
         print("---------- BEGIN STEP 0: GET INPUT PROBLEM ----------", flush=True)
 
@@ -62,6 +67,7 @@ def get_input_problem(state: BaselineQueryState, config):
             # they are used to calculate how close the LLM prediction is to the ground-truth
             'empirical_sp_flop_count' : row['SP_FLOP'],
             'empirical_dp_flop_count' : row['DP_FLOP'],
+            'prompt_type' : prompt_type
             }
 
     if verbose:
@@ -78,29 +84,42 @@ def query_for_flop_count(state: BaselineQueryState, config):
 
     configured_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts, include_raw=True)
 
-    # this node is used to check how well the concretization worked
-    prompt = ChatPromptTemplate.from_messages([
-         ("system",
-         """
-         You are an expert CUDA source code FLOP counting assistant. You will be given a CUDA kernel's source code and its execution configuration. Your task is to analyze the code and accurately determine the number of single-precision (SP) and double-precision (DP) floating point operations (FLOPs) performed by the kernel during its execution.
-"""
-          ),
-          ("human",
-           """Hello world
-""")
-    ])
+    prompt = make_prompt(state.prompt_type)
 
-    chain = prompt | concretization_checker_llm
+    chain = prompt | configured_llm 
 
     result = chain.invoke({
-        "concretization_rules": concretization_rules,
+        "source_code": state['source_code'],
+        "kernel_name": state['kernel_name'],
+        "exec_args": state['exec_args'],
+        "grid_size": state['grid_size'],
+        "block_size": state['block_size'],
+        "total_num_threads": state['total_num_threads']
     })
 
-    resultState = result['parsed']
+    parsed_result = result['parsed']
 
     if verbose:
-        print(f"\tSTEP (1) Concretization Checker Result: [{resultState.status}]", flush=True)
+        print(f"\tGot an LLM response!: \n\tSP_FLOP:[{parsed_result.sp_flop_count}], \n\tDP_FLOP:[{parsed_result.dp_flop_count}]\n", flush=True)
 
-    updated_costs = get_query_cost(result['raw'], verbose)
+    query_cost = get_query_cost(result['raw'], verbose)
 
-    return updated_costs | {"concretizationState": resultState}
+    return query_cost | {'predicted_sp_flop_count': parsed_result.sp_flop_count, 
+                         'predicted_dp_flop_count': parsed_result.dp_flop_count, 
+                         'predicted_sp_flop_count_explanation': parsed_result.sp_flop_explanation, 
+                         'predicted_dp_flop_count_explanation': parsed_result.dp_flop_explanation, 
+                         'raw_flop_counts': result['raw']
+                        }
+
+
+# now let's set up the StateGraph to represent the agent
+workflow = StateGraph(BaselineQueryState, context_schema=Configuration)
+workflow.add_node("get_input_problem_0", get_input_problem)
+workflow.add_node("query_for_flop_count_1", query_for_flop_count)
+
+workflow.add_edge("get_input_problem_0", "query_for_flop_count_1")
+workflow.add_edge("query_for_flop_count_1", END)
+
+workflow.set_entry_point("get_input_problem_0")
+
+graph = workflow.compile()

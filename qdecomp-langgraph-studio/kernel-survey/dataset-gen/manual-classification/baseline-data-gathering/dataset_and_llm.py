@@ -6,7 +6,10 @@ from langchain_core.runnables import ConfigurableField
 import os
 import csv
 
-df_to_query = pd.read_csv('../kernels_to_inference_balanced.csv', quotechar='"', na_rep='NULL', quoting=csv.QUOTE_NONNUMERIC)
+# get the current directory of this file and go up one directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+df_to_query = pd.read_csv(os.path.join(parent_dir, 'kernels_to_inference_balanced.csv'), quotechar='"', na_rep='NULL', quoting=csv.QUOTE_NONNUMERIC)
 
 try:
     # for some reason, the AzureChatOpenAI class fails to initialize properly
