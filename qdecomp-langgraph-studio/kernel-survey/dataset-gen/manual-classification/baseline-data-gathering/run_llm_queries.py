@@ -47,7 +47,7 @@ def get_current_spend(filename: str) -> float:
         else:
             return 0.0
     except pd.errors.EmptyDataError:
-        print(f"Warning: Output file '{filename}' is empty. Assuming $0.0 spend.")
+        print(f"Warning: Output file '{filename}' is empty. Assuming $0.0 spend.", flush=True)
         return 0.0
     except Exception as e:
         print(f"Error reading spend from '{filename}': {e}")
@@ -63,7 +63,9 @@ def main():
     parser.add_argument("--temp", type=float, default=0.2, help="Temperature parameter for the language model")
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
+    parser.add_argument("--maxNumRetries", type=int, default=3, help="Maximum number of retries for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
+    parser.add_argument("--useFullPrompt", action='store_true', help="Enable usage of full prompt instead of simple prompt.")
     parser.add_argument("--timeout", type=int, default=120, help="Timeout for each query in seconds. Default is 120 (2 minutes).")
     parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 secs (2 minutes).")
 
@@ -74,7 +76,8 @@ def main():
     if args.outfile is None:
         model_name_sanitized = args.modelName.replace("/", "-")
         provider_name = "azure" if args.useAzure else "openrouter"
-        args.outfile = f"llm_query_results-{provider_name}--{model_name_sanitized}.csv"
+        prompt_type = "fullPrompt" if args.useFullPrompt else "simplePrompt"
+        args.outfile = f"llm_query_results-{provider_name}--{prompt_type}-temp_{args.temp}-top_p_{args.top_p}-{model_name_sanitized}.csv"
 
     if args.useAzure:
         assert args.api_version is not None, "When using Azure, --api_version must be specified."
@@ -91,7 +94,7 @@ def main():
             existing_results_df = pd.read_csv(args.outfile, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
             csv_headers = existing_results_df.columns.tolist()
         except pd.errors.EmptyDataError:
-            print(f"Warning: Output file '{args.outfile}' is empty. Starting fresh.")
+            print(f"Warning: Output file '{args.outfile}' is empty. Starting fresh.", flush=True)
             existing_results_df = pd.DataFrame() # Start with an empty dataframe
 
 
@@ -113,13 +116,15 @@ def main():
     print(f"              Temperature: {args.temp}")
     print(f"                    Top_p: {args.top_p}")
     print(f"                 # Trials: {args.numTrials}")
+    print(f"          Max Num Retries: {args.maxNumRetries}")
     print(f"              Output File: {args.outfile}")
     print(f"              File Exists: {outfile_exists}")
     print(f"             Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
     print(f"             Provider URL: {args.provider_url}")
     print(f"                Use Azure: {'ENABLED' if args.useAzure else 'Disabled'}")
+    print(f"          Use Full Prompt: {'ENABLED' if args.useFullPrompt else 'Disabled'}")
     print(f" Single LLM Query Timeout: {args.single_llm_timeout} seconds")
-    print(f"  .          otal Timeout: {args.timeout} seconds")
+    print(f"            Total Timeout: {args.timeout} seconds")
     if args.useAzure:
         print(f"              API Version: {args.api_version}")
     print("---------------------------------")
@@ -144,9 +149,10 @@ def main():
             combined_name = row['combined_name']
             nnz_flop_state = row['nnz_flop_state']
             variant_type = row['variant']
+            prompt_type = "full" if args.useFullPrompt else "simple"
 
             current_total_spend = get_current_spend(args.outfile)
-            print(f"\nCurrent Total Spend: ${current_total_spend:.2f}\n")
+            print(f"\nCurrent Total Spend: ${current_total_spend:.2f}\n", flush=True)
 
             # --- Check if sample already processed ---
             if existing_results_df is not None and not existing_results_df.shape[0] == 0:
@@ -156,6 +162,7 @@ def main():
                     (existing_results_df['nnz_flop_state'] == nnz_flop_state) & 
                     (existing_results_df['variant'] == variant_type) & 
                     (existing_results_df['trial'] == trial) & 
+                    (existing_results_df['prompt_type'] == prompt_type) & 
                     (existing_results_df['modelName'] == args.modelName) &
                     (existing_results_df['top_p'] == args.top_p) &
                     (existing_results_df['temp'] == args.temp)]
@@ -167,7 +174,10 @@ def main():
                 assert num_entries == (num_error_entries + num_success_entries), "Data inconsistency detected in existing results."
 
                 if num_success_entries >= 1:
-                    print(f"\nSkipping Sample: {combined_name} [trial: {trial}] - Already processed successfully.\n")
+                    print(f"\nSample: {combined_name} [trial: {trial}] - Already processed successfully.\n", flush=True)
+                    continue
+                elif num_error_entries >= args.maxNumRetries:
+                    print(f"\n\tSKIPPING Sample: {combined_name} [trial: {trial}] - Already failed {num_error_entries} times.\n", flush=True)
                     continue
                 
 
@@ -183,6 +193,7 @@ def main():
                         "api_version": args.api_version,
                         "timeout": args.single_llm_timeout,
                         "input_problem_row": row.to_dict(),
+                        "prompt_type": prompt_type,
                         "verbose_printing": args.verbose
                     },
                     "recursion_limit": 20,  
@@ -198,12 +209,12 @@ def main():
                         "opr_provider_api_key": os.getenv("OPENAI_API_KEY"),
                         "opr_timeout": args.single_llm_timeout,
                         "input_problem_row": row.to_dict(),
+                        "prompt_type": prompt_type,
                         "verbose_printing": args.verbose
                     },
                     "recursion_limit": 20,  
                 }
             
-
             include_header = ((trial == 1) and (index == 0))
 
             start_time = time.time()
@@ -236,7 +247,7 @@ def main():
             except Exception as e:
                 signal.alarm(0) # Make sure to disable the alarm if we hit an exception
                 end_time = time.time()
-                print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}")
+                print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}", flush=True)
                 traceback.print_exc()
 
                 if csv_headers is None:
@@ -260,7 +271,7 @@ def main():
                 pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
 
-    print(f"Processing complete. Results saved to {args.outfile}")
+    print(f"Processing complete. Results saved to {args.outfile}", flush=True)
 
 if __name__ == "__main__":
     main()

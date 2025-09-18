@@ -1,6 +1,6 @@
 # make a langchain graph instance with the model
 from typing_extensions import TypedDict, List, Annotated, Literal
-from dataset_and_llm import llm
+from .dataset_and_llm import llm
 from .prompts import make_prompt, FLOPCounts
 from .io_cost import get_query_cost
 import operator
@@ -20,7 +20,7 @@ class BaselineQueryState(TypedDict, total=False):
     empirical_sp_flop_count: float
     empirical_dp_flop_count: float
 
-    prompt_type: Literal["full", "simple"]
+    prompt_type: Literal["simple", "full"]
 
     raw_flop_counts: AIMessage
 
@@ -49,15 +49,15 @@ def get_input_problem(state: BaselineQueryState, config):
 
     prompt_type = config.get("configurable", {}).get("prompt_type", "simple")
 
-    target_name = row['target_name']
+    combined_name = row['combined_name']
 
-    assert row is not None, f"Target problem '{target_name}' not found in the dataset."
+    assert row is not None, f"Target problem '{combined_name}' not found in the dataset."
 
     if verbose:
         print("---------- BEGIN STEP 0: GET INPUT PROBLEM ----------", flush=True)
 
     to_return = {'source_code' : row['source_code'], 
-            'combined_name' : row['combined_name'],
+            'combined_name' : combined_name,
             'kernel_name' : row['Kernel Name'],
             'exec_args' : row['exeArgs'],
             'grid_size' : row['Grid Size'],
@@ -84,9 +84,13 @@ def query_for_flop_count(state: BaselineQueryState, config):
 
     configured_llm = llm.with_config(configurable=config.get("configurable", {})).with_structured_output(FLOPCounts, include_raw=True)
 
-    prompt = make_prompt(state.prompt_type)
+    prompt = make_prompt(state['prompt_type'])
 
     chain = prompt | configured_llm 
+
+    if verbose:
+        print("---------- BEGIN STEP 1: QUERY FOR FLOP COUNT ----------", flush=True)
+        print(f"\tQuerying for FLOP count of kernel: {state['combined_name']}", flush=True)
 
     result = chain.invoke({
         "source_code": state['source_code'],

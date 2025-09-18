@@ -9,7 +9,10 @@ import csv
 # get the current directory of this file and go up one directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-df_to_query = pd.read_csv(os.path.join(parent_dir, 'kernels_to_inference_balanced.csv'), quotechar='"', na_rep='NULL', quoting=csv.QUOTE_NONNUMERIC)
+print('parentdir', parent_dir)
+dataset_path = os.path.join(parent_dir, 'kernels_to_inference_balanced.csv')
+print('dataset_path', dataset_path)
+df_to_query = pd.read_csv(dataset_path, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
 
 try:
     # for some reason, the AzureChatOpenAI class fails to initialize properly
@@ -59,7 +62,7 @@ openrouterModel = ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
     temperature=0.2,
     top_p=0.1,
-    model_name="openai/o3-mini",
+    model_name="openai/gpt-5-mini",
     timeout=120,
     ).configurable_fields(
     model_name=ConfigurableField(
