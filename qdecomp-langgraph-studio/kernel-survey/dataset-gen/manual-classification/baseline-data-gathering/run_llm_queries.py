@@ -77,7 +77,7 @@ def main():
         model_name_sanitized = args.modelName.replace("/", "-")
         provider_name = "azure" if args.useAzure else "openrouter"
         prompt_type = "fullPrompt" if args.useFullPrompt else "simplePrompt"
-        args.outfile = f"llm_query_results-{provider_name}--{prompt_type}-temp_{args.temp}-top_p_{args.top_p}-{model_name_sanitized}.csv"
+        args.outfile = f"llm_query_results--{provider_name}--{prompt_type}--temp_{args.temp}--top_p_{args.top_p}--{model_name_sanitized}.csv"
 
     if args.useAzure:
         assert args.api_version is not None, "When using Azure, --api_version must be specified."
