@@ -111,6 +111,14 @@ def main():
 
     remaining_runs = total_runs - completed_runs
 
+    api_key = ''
+    if args.useAzure:
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    else:
+        api_key = os.getenv("OPENAI_API_KEY")
+
+    assert api_key is not None and api_key != '', "API key is not set in environment variables. Use AZURE_OPENAI_API_KEY for Azure or OPENAI_API_KEY for OpenRouter."
+
     print("\n------ Experiment Configuration ------")
     print(f"                    Model: {args.modelName}")
     print(f"              Temperature: {args.temp}")
@@ -189,7 +197,7 @@ def main():
                         "model": args.modelName,
                         "top_p": args.top_p,
                         "temp": args.temp,
-                        "provider_api_key": os.getenv("AZURE_OPENAI_API_KEY"),
+                        "provider_api_key": api_key,
                         "api_version": args.api_version,
                         "timeout": args.single_llm_timeout,
                         "input_problem_row": row.to_dict(),
@@ -206,7 +214,7 @@ def main():
                         "opr_model": args.modelName,
                         "opr_top_p": args.top_p,
                         "opr_temp": args.temp,
-                        "opr_provider_api_key": os.getenv("OPENAI_API_KEY"),
+                        "opr_provider_api_key": api_key,
                         "opr_timeout": args.single_llm_timeout,
                         "input_problem_row": row.to_dict(),
                         "prompt_type": prompt_type,
