@@ -9,7 +9,7 @@ import traceback
 import ast
 import signal
 from .dataset_and_llm import df_to_query as df
-from .agent import graph
+from .agent import make_graph
 
 class TimeoutException(Exception):
     pass
@@ -62,6 +62,7 @@ def main():
     parser.add_argument("--top_p", type=float, default=0.1, help="Top-p parameter for the language model")
     parser.add_argument("--temp", type=float, default=0.2, help="Temperature parameter for the language model")
     parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
+    parser.add_argument("--sqlDBFile", type=str, default=None, help="Name of the SQLite database file to store query checkpoints.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--maxNumRetries", type=int, default=3, help="Maximum number of retries for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
@@ -72,12 +73,18 @@ def main():
 
     args = parser.parse_args()
 
+    prompt_type = "fullPrompt" if args.useFullPrompt else "simplePrompt"
+    model_name_sanitized = args.modelName.replace("/", "-")
+    provider_name = "azure" if args.useAzure else "openrouter"
+
     # --- Create output filename if not provided ---
     if args.outfile is None:
-        model_name_sanitized = args.modelName.replace("/", "-")
-        provider_name = "azure" if args.useAzure else "openrouter"
-        prompt_type = "fullPrompt" if args.useFullPrompt else "simplePrompt"
         args.outfile = f"llm_query_results--{provider_name}--{prompt_type}--temp_{args.temp}--top_p_{args.top_p}--{model_name_sanitized}.csv"
+
+    if args.sqlDBFile is None:
+        args.sqlDBFile = f'./baseline-data-gathering/checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}.sqlite'
+        # print the cwd
+        print(f"Current working directory: {os.getcwd()}", flush=True)
 
     if args.useAzure:
         assert args.api_version is not None, "When using Azure, --api_version must be specified."
@@ -149,6 +156,7 @@ def main():
         print("All runs are already completed. Exiting.")
         return
 
+    graph = make_graph(args.sqlDBFile)
 
     current_total_spend = 0.0
 
@@ -189,6 +197,15 @@ def main():
                     continue
                 
 
+            # the "thread_id" represents a "thread of conversation" with the LLM
+            # for each query, we start a new thread, named with the:
+            # combined_name, model name, provider url, trial number, prompt type, variant type, nnz_flop_state, top_p, temp
+            thread_id = f'{combined_name}:{args.modelName}:{args.provider_url}:{trial}:{prompt_type}:{variant_type}:{nnz_flop_state}:{args.top_p}:{args.temp}'
+
+            # we only use checkpoint_id if we need time-travelling to a particular state in a thread
+            # the checkpoint_id should be added by default 
+            #checkpoint_id = "hello"
+
             if args.useAzure:
                 config = {
                     "configurable": {
@@ -202,7 +219,11 @@ def main():
                         "timeout": args.single_llm_timeout,
                         "input_problem_row": row.to_dict(),
                         "prompt_type": prompt_type,
-                        "verbose_printing": args.verbose
+                        "verbose_printing": args.verbose,
+
+                        # for checkpointer
+                        "thread_id" : thread_id,
+                        #"checkpoint_id" : checkpoint_id
                     },
                     "recursion_limit": 20,  
                 }
@@ -218,7 +239,11 @@ def main():
                         "opr_timeout": args.single_llm_timeout,
                         "input_problem_row": row.to_dict(),
                         "prompt_type": prompt_type,
-                        "verbose_printing": args.verbose
+                        "verbose_printing": args.verbose,
+
+                        # for checkpointer
+                        "thread_id" : thread_id,
+                        #"checkpoint_id" : checkpoint_id
                     },
                     "recursion_limit": 20,  
                 }
@@ -274,6 +299,7 @@ def main():
                     'top_p': args.top_p,
                     'temp': args.temp,
                     'totalQueryTime': end_time - start_time,
+                    'promnpt_type': prompt_type,
                     'error': str(e), 
                 })
                 pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')

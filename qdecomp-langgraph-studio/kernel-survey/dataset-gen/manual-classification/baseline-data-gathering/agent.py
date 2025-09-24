@@ -1,12 +1,14 @@
 # make a langchain graph instance with the model
 from typing_extensions import TypedDict, List, Annotated, Literal
-from .dataset_and_llm import llm
-from .prompts import make_prompt, FLOPCounts
-from .io_cost import get_query_cost
+from dataset_and_llm import llm
+from prompts import make_prompt, FLOPCounts
+from io_cost import get_query_cost
 import operator
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain.schema import AIMessage
-from .configuration import Configuration
+from configuration import Configuration
+import sqlite3
 
 class BaselineQueryState(TypedDict, total=False):
     source_code: str
@@ -105,6 +107,7 @@ def query_for_flop_count(state: BaselineQueryState, config):
 
     if verbose:
         print(f"\tGot an LLM response!: \n\tSP_FLOP:[{parsed_result.sp_flop_count}], \n\tDP_FLOP:[{parsed_result.dp_flop_count}]\n", flush=True)
+        result['raw'].pretty_print()
 
     query_cost = get_query_cost(result['raw'], verbose)
 
@@ -116,14 +119,24 @@ def query_for_flop_count(state: BaselineQueryState, config):
                         }
 
 
-# now let's set up the StateGraph to represent the agent
-workflow = StateGraph(BaselineQueryState, context_schema=Configuration)
-workflow.add_node("get_input_problem_0", get_input_problem)
-workflow.add_node("query_for_flop_count_1", query_for_flop_count)
+def make_graph(sqlite_db_path: str = "checkpoints/baseline_data_checkpoints.db"):
+    # now let's set up the StateGraph to represent the agent
+    workflow = StateGraph(BaselineQueryState, context_schema=Configuration)
+    workflow.add_node("get_input_problem_0", get_input_problem)
+    workflow.add_node("query_for_flop_count_1", query_for_flop_count)
 
-workflow.add_edge("get_input_problem_0", "query_for_flop_count_1")
-workflow.add_edge("query_for_flop_count_1", END)
+    workflow.add_edge("get_input_problem_0", "query_for_flop_count_1")
+    workflow.add_edge("query_for_flop_count_1", END)
 
-workflow.set_entry_point("get_input_problem_0")
+    workflow.set_entry_point("get_input_problem_0")
 
-graph = workflow.compile()
+    # let's also add a checkpointer to save intermediate results
+    # sqlite_db_path: path to sqlite database used by SqliteSaver to persist graph checkpoints
+    conn = sqlite3.connect(sqlite_db_path, check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    graph = workflow.compile(checkpointer=checkpointer)
+
+    return graph
+
+
+
