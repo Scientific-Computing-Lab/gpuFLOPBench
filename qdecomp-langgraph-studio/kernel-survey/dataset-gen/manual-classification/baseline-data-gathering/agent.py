@@ -24,7 +24,7 @@ class BaselineQueryState(TypedDict, total=False):
 
     prompt_type: Literal["simple", "full"]
 
-    raw_flop_counts: AIMessage
+    raw_flop_counts: Annotated[List[AIMessage], operator.add]
 
     predicted_sp_flop_count: int
     predicted_dp_flop_count: int
@@ -118,7 +118,7 @@ def query_for_flop_count(state: BaselineQueryState, config):
                          'predicted_dp_flop_count': parsed_result.dp_flop_count, 
                          'predicted_sp_flop_count_explanation': parsed_result.sp_flop_explanation, 
                          'predicted_dp_flop_count_explanation': parsed_result.dp_flop_explanation, 
-                         'raw_flop_counts': result['raw']
+                         'raw_flop_counts': [result['raw']]
                         }
 
 

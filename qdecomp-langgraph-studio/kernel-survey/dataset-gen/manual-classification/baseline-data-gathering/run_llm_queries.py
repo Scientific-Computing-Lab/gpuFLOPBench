@@ -106,7 +106,10 @@ def main():
 
     graph = make_graph(args.sqlDBFile)
 
-    total_cost = get_current_spend(graph, args.sqlDBFile)
+    if sqlfile_exists:
+        total_cost = get_current_spend(graph, args.sqlDBFile)
+    else:
+        total_cost = 0.0
 
     print("\n------ Experiment Configuration ------")
     print(f"                    Model: {args.modelName}")
@@ -152,7 +155,7 @@ def main():
             # combined_name, model name, provider url, trial number, prompt type, variant type, nnz_flop_state, top_p, temp
             thread_id = f'{combined_name}:{args.modelName}:{args.provider_url}:{trial}:{prompt_type}:{variant_type}:{nnz_flop_state}:{args.top_p}:{args.temp}'
 
-            print("Total Current Spend: $%.2f" % (get_current_spend(graph, args.sqlDBFile)), flush=True)
+            print("Total Current Spend: $%.5f" % (get_current_spend(graph, args.sqlDBFile)), flush=True)
 
             # we only use checkpoint_id if we need time-travelling to a particular state in a thread
             # the checkpoint_id should be added by default 
