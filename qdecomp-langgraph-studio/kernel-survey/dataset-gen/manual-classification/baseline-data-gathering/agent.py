@@ -35,6 +35,9 @@ class BaselineQueryState(TypedDict, total=False):
     output_tokens: Annotated[List[int], operator.add]
     total_cost: Annotated[List[float], operator.add]
 
+    total_query_time: float
+    error: str
+
 # Calculate the total number of threads from the gridSz and the blockSz
 # grid size is a string of format "(x, y, z)"
 # block size is a string of format "(x, y, z)"
@@ -119,7 +122,7 @@ def query_for_flop_count(state: BaselineQueryState, config):
                         }
 
 
-def make_graph(sqlite_db_path: str = "checkpoints/baseline_data_checkpoints.db"):
+def make_graph(sqlite_db_path: str):
     # now let's set up the StateGraph to represent the agent
     workflow = StateGraph(BaselineQueryState, context_schema=Configuration)
     workflow.add_node("get_input_problem_0", get_input_problem)

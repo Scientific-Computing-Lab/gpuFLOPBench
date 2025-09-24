@@ -1,5 +1,3 @@
 
 
-pushd ../
-python3 -m baseline-data-gathering.run_llm_queries --modelName openai/gpt-4.1-mini --numTrials 3 --verbose --useFullPrompt
-popd
+python3 ./run_llm_queries.py --modelName openai/gpt-5-mini --numTrials 3 --verbose 2>&1 | tee -a ./gpt-5-mini-simplePrompt.log

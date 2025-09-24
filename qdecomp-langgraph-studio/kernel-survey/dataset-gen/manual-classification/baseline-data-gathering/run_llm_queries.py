@@ -8,8 +8,8 @@ import time
 import traceback
 import ast
 import signal
-from .dataset_and_llm import df_to_query as df
-from .agent import make_graph
+from dataset_and_llm import df_to_query as df
+from agent import make_graph
 
 class TimeoutException(Exception):
     pass
@@ -82,7 +82,7 @@ def main():
         args.outfile = f"llm_query_results--{provider_name}--{prompt_type}--temp_{args.temp}--top_p_{args.top_p}--{model_name_sanitized}.csv"
 
     if args.sqlDBFile is None:
-        args.sqlDBFile = f'./baseline-data-gathering/checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}.sqlite'
+        args.sqlDBFile = f'./checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}.sqlite'
         # print the cwd
         print(f"Current working directory: {os.getcwd()}", flush=True)
 
@@ -262,6 +262,7 @@ def main():
                 result = graph.invoke({}, config=config)
                 signal.alarm(0)  # Disable the alarm
                 end_time = time.time()
+                total_xtime = end_time - start_time
                 # Add trial and combined_name to the result for saving
                 result['trial'] = trial
                 result['combined_name'] = combined_name
@@ -270,16 +271,20 @@ def main():
                 result['variant'] = variant_type
                 result['top_p'] = args.top_p
                 result['temp'] = args.temp
-                result['totalQueryTime'] = end_time - start_time
+                result['totalQueryTime'] = total_xtime
                 result['error'] = None  # Explicitly mark as success
 
                 # Append result to CSV
                 # if we are adding the first row, we need to include the header
                 pd.DataFrame([result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
+                # this is for the sql checkpointing metadata
+                graph.update_state(config, {'total_query_time': total_xtime, 'error': 'Success'})
+
             except Exception as e:
                 signal.alarm(0) # Make sure to disable the alarm if we hit an exception
                 end_time = time.time()
+                total_xtime = end_time - start_time
                 print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}", flush=True)
                 traceback.print_exc()
 
@@ -298,11 +303,13 @@ def main():
                     'variant': variant_type,
                     'top_p': args.top_p,
                     'temp': args.temp,
-                    'totalQueryTime': end_time - start_time,
-                    'promnpt_type': prompt_type,
+                    'totalQueryTime': total_xtime,
+                    'prompt_type': prompt_type,
                     'error': str(e), 
                 })
                 pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+
+                graph.update_state(config, {'total_query_time': total_xtime, 'error': str(e)})
 
 
     print(f"Processing complete. Results saved to {args.outfile}", flush=True)

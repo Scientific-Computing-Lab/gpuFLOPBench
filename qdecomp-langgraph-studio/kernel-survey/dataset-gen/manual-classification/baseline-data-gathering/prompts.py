@@ -2,14 +2,15 @@ from langchain.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 # This is used for the structured output of the model
+# the order of this class matters, as the model will first fill out the explanation, then the flop count
 class FLOPCounts(BaseModel):
-    sp_flop_count: int = Field(..., description="Total number of single-precision floating point operations (SP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
-
     sp_flop_explanation: str = Field(..., description="Explanation of how the single-precision floating point operations (SP-FLOP) count was calculated. This should include the reasoning behind the number of operations performed in the kernel, including any relevant loop iterations and warp divergence region executions.")
 
-    dp_flop_count: int = Field(..., description="Total number of double-precision floating point operations (DP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
+    sp_flop_count: int = Field(..., description="Total number of single-precision floating point operations (SP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
 
     dp_flop_explanation: str = Field(..., description="Explanation of how the double-precision floating point operations (DP-FLOP) count was calculated. This should include the reasoning behind the number of operations performed in the kernel, including any relevant loop iterations and warp divergence region executions.")
+
+    dp_flop_count: int = Field(..., description="Total number of double-precision floating point operations (DP-FLOP) performed by the kernel. Accounting for the number of threads, loop iterations, and warp divergence region executions.")
 
 
 simpleSystemPrompt="""You are an expert CUDA source code FLOP counting assistant. For a given target CUDA kernel, you will be given: 
