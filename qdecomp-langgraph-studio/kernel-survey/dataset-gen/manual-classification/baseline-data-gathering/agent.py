@@ -35,8 +35,8 @@ class BaselineQueryState(TypedDict, total=False):
     output_tokens: Annotated[List[int], operator.add]
     total_cost: Annotated[List[float], operator.add]
 
-    total_query_time: float
-    error: str
+    total_query_time: Annotated[List[float], operator.add]
+    error: Annotated[List[str], operator.add]
 
 # Calculate the total number of threads from the gridSz and the blockSz
 # grid size is a string of format "(x, y, z)"

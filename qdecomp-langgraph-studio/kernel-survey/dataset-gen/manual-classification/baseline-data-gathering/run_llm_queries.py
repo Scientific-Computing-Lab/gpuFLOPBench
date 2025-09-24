@@ -1,7 +1,7 @@
 
+import sys
 import csv
 import argparse
-import pandas as pd
 from tqdm import tqdm
 import os
 import time
@@ -10,6 +10,7 @@ import ast
 import signal
 from dataset_and_llm import df_to_query as df
 from agent import make_graph
+from sqlite_helper import get_thread_ids_from_sqlite
 
 class TimeoutException(Exception):
     pass
@@ -20,38 +21,29 @@ def timeout_handler(signum, frame):
 # Register the signal handler for SIGALRM -- for our 10 minutes timeout
 signal.signal(signal.SIGALRM, timeout_handler)
 
-def parse_and_sum_cost(cost_val):
-    """Safely parse a string representation of a list and sum its elements."""
-    if isinstance(cost_val, str):
-        try:
-            # Safely evaluate string to a Python literal (e.g., a list)
-            num_list = ast.literal_eval(cost_val)
-            if isinstance(num_list, list):
-                return sum(num_list)
-        except (ValueError, SyntaxError):
-            return 0.0  # Return 0 if parsing fails
-    elif isinstance(cost_val, list):
-        return sum(cost_val) # Already a list
-    return 0.0 # Not a string or list, return 0
 
+def get_current_spend(graph, sqlDBFile) -> float:
 
-def get_current_spend(filename: str) -> float:
-    if not os.path.exists(filename):
-        return 0.0
+    thread_ids = get_thread_ids_from_sqlite(sqlDBFile)
 
-    try:
-        existing_df = pd.read_csv(filename, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-        if 'total_cost' in existing_df.columns:
-            total_spend = existing_df[~existing_df['total_cost'].isna()]['total_cost'].apply(parse_and_sum_cost).sum()
-            return total_spend
-        else:
-            return 0.0
-    except pd.errors.EmptyDataError:
-        print(f"Warning: Output file '{filename}' is empty. Assuming $0.0 spend.", flush=True)
-        return 0.0
-    except Exception as e:
-        print(f"Error reading spend from '{filename}': {e}")
-        return 0.0
+    total_cost = 0.0
+
+    for thread_id in thread_ids:
+        config = {
+            "configurable": {
+                "thread_id": thread_id
+            }
+        }
+        all_states = [s for s in graph.get_state_history(config)]
+        for state in all_states:
+            if (state is not None) and ('total_cost' in state.values) and (state.values['total_cost'] is not None):
+                if isinstance(state.values['total_cost'], list):
+                    total_cost += sum(state.values['total_cost'])
+                else:
+                    total_cost += float(state.values['total_cost'])
+
+    return total_cost
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run LLM queries on kernel data.")
@@ -61,7 +53,6 @@ def main():
     parser.add_argument("--api_version", type=str, default=None, help="If using Azure, specify the API version.")
     parser.add_argument("--top_p", type=float, default=0.1, help="Top-p parameter for the language model")
     parser.add_argument("--temp", type=float, default=0.2, help="Temperature parameter for the language model")
-    parser.add_argument("--outfile", type=str, default=None, help="Name of the output file to store query data. If not provided, it's generated from modelName.")
     parser.add_argument("--sqlDBFile", type=str, default=None, help="Name of the SQLite database file to store query checkpoints.")
     parser.add_argument("--numTrials", type=int, default=3, help="Number of trials to run for each query")
     parser.add_argument("--maxNumRetries", type=int, default=3, help="Maximum number of retries for each query")
@@ -77,14 +68,13 @@ def main():
     model_name_sanitized = args.modelName.replace("/", "-")
     provider_name = "azure" if args.useAzure else "openrouter"
 
-    # --- Create output filename if not provided ---
-    if args.outfile is None:
-        args.outfile = f"llm_query_results--{provider_name}--{prompt_type}--temp_{args.temp}--top_p_{args.top_p}--{model_name_sanitized}.csv"
-
     if args.sqlDBFile is None:
         args.sqlDBFile = f'./checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}.sqlite'
         # print the cwd
         print(f"Current working directory: {os.getcwd()}", flush=True)
+
+    # check if the sqlDBFile already exists
+    sqlfile_exists = os.path.exists(args.sqlDBFile)
 
     if args.useAzure:
         assert args.api_version is not None, "When using Azure, --api_version must be specified."
@@ -93,28 +83,16 @@ def main():
     else:
         assert "OPENAI_API_KEY" in os.environ, "Environment variable OPENAI_API_KEY must be set for OpenRouter usage."
 
-    # --- Restart functionality: Load existing results if output file exists ---
-    existing_results_df = None
-    csv_headers = None
-    if os.path.exists(args.outfile):
-        try:
-            existing_results_df = pd.read_csv(args.outfile, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-            csv_headers = existing_results_df.columns.tolist()
-        except pd.errors.EmptyDataError:
-            print(f"Warning: Output file '{args.outfile}' is empty. Starting fresh.", flush=True)
-            existing_results_df = pd.DataFrame() # Start with an empty dataframe
-
 
     # --- Confirmation before starting ---
     total_kernels = len(df)
     total_runs = total_kernels * args.numTrials
-    completed_runs = 0
-    outfile_exists = os.path.exists(args.outfile)
-    total_cost = get_current_spend(args.outfile)
 
-    if outfile_exists and existing_results_df is not None and not existing_results_df.empty:
-        # Count only successful runs (where error is NaN)
-        completed_runs = existing_results_df[existing_results_df['error'].isna()].shape[0]
+    if sqlfile_exists:
+        thread_ids = get_thread_ids_from_sqlite(args.sqlDBFile, success_only=True)
+        completed_runs = len(thread_ids)
+    else:
+        completed_runs = 0
 
     remaining_runs = total_runs - completed_runs
 
@@ -126,14 +104,18 @@ def main():
 
     assert api_key is not None and api_key != '', "API key is not set in environment variables. Use AZURE_OPENAI_API_KEY for Azure or OPENAI_API_KEY for OpenRouter."
 
+    graph = make_graph(args.sqlDBFile)
+
+    total_cost = get_current_spend(graph, args.sqlDBFile)
+
     print("\n------ Experiment Configuration ------")
     print(f"                    Model: {args.modelName}")
     print(f"              Temperature: {args.temp}")
     print(f"                    Top_p: {args.top_p}")
     print(f"                 # Trials: {args.numTrials}")
     print(f"          Max Num Retries: {args.maxNumRetries}")
-    print(f"              Output File: {args.outfile}")
-    print(f"              File Exists: {outfile_exists}")
+    print(f"       Output SQL DB File: {args.sqlDBFile}")
+    print(f"            SQL DB Exists: {sqlfile_exists}")
     print(f"             Verbose Mode: {'Enabled' if args.verbose else 'Disabled'}")
     print(f"             Provider URL: {args.provider_url}")
     print(f"                Use Azure: {'ENABLED' if args.useAzure else 'Disabled'}")
@@ -147,7 +129,7 @@ def main():
     print(f"    Total Runs: {total_runs}")
     print(f"Completed Runs: {completed_runs} ({completed_runs / total_runs * 100:.2f}%)")
     print(f"Remaining Runs: {remaining_runs} ({remaining_runs / total_runs * 100:.2f}%)")
-    print(f" Current Spend: ${total_cost:.2f}")
+    print(f" Current Spend: ${total_cost:.5f}")
     print("---------------------------------")
     
     if remaining_runs > 0:
@@ -156,9 +138,6 @@ def main():
         print("All runs are already completed. Exiting.")
         return
 
-    graph = make_graph(args.sqlDBFile)
-
-    current_total_spend = 0.0
 
     for trial in tqdm(range(1, args.numTrials + 1), desc="Trials"):
         for index, row in tqdm(df.iterrows(), total=df.shape[0], desc=f"Trial {trial}"):
@@ -167,40 +146,13 @@ def main():
             variant_type = row['variant']
             prompt_type = "full" if args.useFullPrompt else "simple"
 
-            current_total_spend = get_current_spend(args.outfile)
-            print(f"\nCurrent Total Spend: ${current_total_spend:.2f}\n", flush=True)
-
-            # --- Check if sample already processed ---
-            if existing_results_df is not None and not existing_results_df.shape[0] == 0:
-                # Check for successful (non-error) completion
-                existing_sample = existing_results_df [ 
-                    (existing_results_df['combined_name'] == combined_name) & 
-                    (existing_results_df['nnz_flop_state'] == nnz_flop_state) & 
-                    (existing_results_df['variant'] == variant_type) & 
-                    (existing_results_df['trial'] == trial) & 
-                    (existing_results_df['prompt_type'] == prompt_type) & 
-                    (existing_results_df['modelName'] == args.modelName) &
-                    (existing_results_df['top_p'] == args.top_p) &
-                    (existing_results_df['temp'] == args.temp)]
-
-                num_entries = existing_sample.shape[0]
-                num_error_entries = existing_sample['error'].notna().sum()
-                num_success_entries = existing_sample['error'].isna().sum()
-
-                assert num_entries == (num_error_entries + num_success_entries), "Data inconsistency detected in existing results."
-
-                if num_success_entries >= 1:
-                    print(f"\nSample: {combined_name} [trial: {trial}] - Already processed successfully.\n", flush=True)
-                    continue
-                elif num_error_entries >= args.maxNumRetries:
-                    print(f"\n\tSKIPPING Sample: {combined_name} [trial: {trial}] - Already failed {num_error_entries} times.\n", flush=True)
-                    continue
-                
 
             # the "thread_id" represents a "thread of conversation" with the LLM
             # for each query, we start a new thread, named with the:
             # combined_name, model name, provider url, trial number, prompt type, variant type, nnz_flop_state, top_p, temp
             thread_id = f'{combined_name}:{args.modelName}:{args.provider_url}:{trial}:{prompt_type}:{variant_type}:{nnz_flop_state}:{args.top_p}:{args.temp}'
+
+            print("Total Current Spend: $%.2f" % (get_current_spend(graph, args.sqlDBFile)), flush=True)
 
             # we only use checkpoint_id if we need time-travelling to a particular state in a thread
             # the checkpoint_id should be added by default 
@@ -248,7 +200,12 @@ def main():
                     "recursion_limit": 20,  
                 }
             
-            include_header = ((trial == 1) and (index == 0))
+            # let's check if we've already done this run
+            state = graph.get_state(config)
+            if state is not None and state.values.get('error', 'NOT DONE') == 'Success':
+                if args.verbose:
+                    print(f"\t Sample: {combined_name} [trial: {trial}] - Already processed successfully.", flush=True)
+                continue
 
             start_time = time.time()
             try:
@@ -259,60 +216,40 @@ def main():
                 graph.step_timeout = args.single_llm_timeout + 5
 
                 # Run the graph workflow
-                result = graph.invoke({}, config=config)
+                graph.invoke({}, config=config)
+
                 signal.alarm(0)  # Disable the alarm
                 end_time = time.time()
                 total_xtime = end_time - start_time
-                # Add trial and combined_name to the result for saving
-                result['trial'] = trial
-                result['combined_name'] = combined_name
-                result['modelName'] = args.modelName
-                result['nnz_flop_state'] = nnz_flop_state
-                result['variant'] = variant_type
-                result['top_p'] = args.top_p
-                result['temp'] = args.temp
-                result['totalQueryTime'] = total_xtime
-                result['error'] = None  # Explicitly mark as success
-
-                # Append result to CSV
-                # if we are adding the first row, we need to include the header
-                pd.DataFrame([result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
 
                 # this is for the sql checkpointing metadata
-                graph.update_state(config, {'total_query_time': total_xtime, 'error': 'Success'})
+                graph.update_state(config, {'total_query_time': [total_xtime], 'error': ['Success']})
 
             except Exception as e:
                 signal.alarm(0) # Make sure to disable the alarm if we hit an exception
                 end_time = time.time()
                 total_xtime = end_time - start_time
-                print(f"Error processing row {index} ({combined_name}), trial {trial}: {e}", flush=True)
+
+                print(f"\t Sample: {combined_name} [trial: {trial}] - Exception occurred: {str(e)}", flush=True)
                 traceback.print_exc()
 
-                if csv_headers is None:
-                    existing_results_df = pd.read_csv(args.outfile, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-                    csv_headers = existing_results_df.columns.tolist()
+                graph.update_state(config, {'total_query_time': [total_xtime], 'error': [str(e)]})
 
-                # Optionally add a placeholder for the failed row
-                # Create a placeholder row with all expected columns
-                error_result = {key: None for key in csv_headers}
-                error_result.update({
-                    'trial': trial,
-                    'combined_name': combined_name, 
-                    'modelName': args.modelName,
-                    'nnz_flop_state': nnz_flop_state,
-                    'variant': variant_type,
-                    'top_p': args.top_p,
-                    'temp': args.temp,
-                    'totalQueryTime': total_xtime,
-                    'prompt_type': prompt_type,
-                    'error': str(e), 
-                })
-                pd.DataFrame([error_result]).to_csv(args.outfile, mode='a', header=include_header, index=False, quoting=csv.QUOTE_NONNUMERIC, quotechar='"')
+
+            # if we hit CTRL+C, we want to exit gracefully and properly log the error
+            except BaseException as e:
+                signal.alarm(0) # Make sure to disable the alarm if we hit an exception
+                end_time = time.time()
+                total_xtime = end_time - start_time
+
+                print(f"\t Sample: {combined_name} [trial: {trial}] - Exception occurred: {str(e)}", flush=True)
+                traceback.print_exc()
 
                 graph.update_state(config, {'total_query_time': total_xtime, 'error': str(e)})
+                sys.exit(0)
 
 
-    print(f"Processing complete. Results saved to {args.outfile}", flush=True)
+    print(f"Processing complete. Results saved to {args.sqlDBFile}", flush=True)
 
 if __name__ == "__main__":
     main()
