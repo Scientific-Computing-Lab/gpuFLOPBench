@@ -58,6 +58,7 @@ def main():
     parser.add_argument("--maxNumRetries", type=int, default=3, help="Maximum number of retries for each query")
     parser.add_argument("--verbose", action='store_true', help="Enable verbose output.")
     parser.add_argument("--useFullPrompt", action='store_true', help="Enable usage of full prompt instead of simple prompt.")
+    parser.add_argument("--skipConfirm", action='store_true', help="Enable skipping confirmation prompts.")
     parser.add_argument("--timeout", type=int, default=120, help="Timeout for each query in seconds. Default is 120 (2 minutes).")
     parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 secs (2 minutes).")
 
@@ -135,11 +136,16 @@ def main():
     print(f" Current Spend: ${total_cost:.5f}")
     print("---------------------------------")
     
-    if remaining_runs > 0:
-        input("Press ENTER to continue...\n")
+    if not args.skipConfirm:
+        if remaining_runs > 0:
+            input("Press ENTER to continue...\n")
+        else:
+            print("All runs are already completed. Exiting.")
+            return
     else:
-        print("All runs are already completed. Exiting.")
-        return
+        if remaining_runs <= 0:
+            print("All runs are already completed. Exiting.")
+            return
 
 
     for trial in tqdm(range(1, args.numTrials + 1), desc="Trials"):
@@ -205,10 +211,12 @@ def main():
             
             # let's check if we've already done this run
             state = graph.get_state(config)
-            if state is not None and state.values.get('error', 'NOT DONE') == 'Success':
-                if args.verbose:
-                    print(f"\t Sample: {combined_name} [trial: {trial}] - Already processed successfully.", flush=True)
-                continue
+            if state is not None:
+                state_error = state.values.get('error', ['NOT DONE'])
+                if len(state_error) != 0 and state_error[-1] == 'Success':
+                    if args.verbose:
+                        print(f"\t Sample: {combined_name} [trial: {trial}] - Already processed successfully.", flush=True)
+                    continue
 
             start_time = time.time()
             try:

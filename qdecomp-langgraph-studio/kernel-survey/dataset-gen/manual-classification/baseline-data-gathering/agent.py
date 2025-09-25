@@ -109,8 +109,10 @@ def query_for_flop_count(state: BaselineQueryState, config):
     parsed_result = result['parsed']
 
     if verbose:
-        print(f"\tGot an LLM response!: \n\tSP_FLOP:[{parsed_result.sp_flop_count}], \n\tDP_FLOP:[{parsed_result.dp_flop_count}]\n", flush=True)
         result['raw'].pretty_print()
+        # check if the sp_flop_count attributes are present and not None
+        if parsed_result.sp_flop_count is not None and parsed_result.dp_flop_count is not None:
+            print(f"\tGot an LLM response!: \n\tSP_FLOP:[{parsed_result.sp_flop_count}], \n\tDP_FLOP:[{parsed_result.dp_flop_count}]\n", flush=True)
 
     query_cost = get_query_cost(result['raw'], verbose)
 
