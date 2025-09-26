@@ -64,6 +64,8 @@ def sqlitefile_to_dataframe(full_path: str):
 
     for thread_id in thread_ids:
         parts = split_thread_id_to_parts(thread_id)
+        
+        parts['langgraph_thread_id'] = thread_id
 
         # get the state for the thread_id
         config = {'configurable': {'thread_id': thread_id}}
