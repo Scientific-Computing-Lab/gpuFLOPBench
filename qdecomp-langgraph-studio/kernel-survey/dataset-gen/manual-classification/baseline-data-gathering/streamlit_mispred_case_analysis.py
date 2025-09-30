@@ -6,6 +6,11 @@ import os
 import pathlib
 from typing import List
 
+classes_file = os.path.join(os.path.dirname(__file__), 'manualErrorClasses.txt')
+classes_file = os.path.abspath(classes_file)
+
+percent_cutoffs = [1, 3, 5, 10, 20, 30, 50, 100]
+
 def get_sqlite_files():
     db_dir = './checkpoints/'
 
@@ -21,6 +26,13 @@ def get_sqlite_files():
 
     sqlite_files = [os.path.join(db_dir, f) for f in sqlite_files]
     return sqlite_files
+
+
+
+sqlite_files = get_sqlite_files()
+
+
+
 
 def load_dataframes(full_paths: list[str]):
 
@@ -102,62 +114,154 @@ def _append_manual_class_to_file(path: str, cls: str) -> None:
         # best-effort: ignore errors so UI doesn't crash
         return
 
-def main():
-    st.title("Misprediction Case Analysis")
+def setup_db(db_list):
+    if 'selected_db' not in st.session_state:
+        st.session_state['selected_db'] = None
+        st.session_state['previous_selected_db'] = None
 
-    sqlite_files = get_sqlite_files()
+    selected_db = st.session_state.get('selected_db')
+    previous_selected_db = st.session_state.get('previous_selected_db')
+    if selected_db != previous_selected_db:
+        st.session_state['previous_selected_db'] = selected_db
 
-    # show a list of dataframes to choose from
-    st.sidebar.title("Select SQLite Database")
-    selected_db = st.sidebar.selectbox("Select a database file", sqlite_files)
+def on_select_db_callback():
+    selected_db = st.session_state.get('selected_db')
+    st.write(f"You selected database: {selected_db}")
 
-    percent_cutoffs = [1, 3, 5, 10, 20, 30, 50, 100]
-    selected_cutoff = st.sidebar.selectbox("Select percent difference cutoff", percent_cutoffs)
-    # If cutoff changed since last run, reset navigation state so we show updated results
-    if 'last_selected_cutoff' not in st.session_state:
-        st.session_state['last_selected_cutoff'] = None
-    if selected_cutoff != st.session_state.get('last_selected_cutoff'):
-        st.session_state['last_selected_cutoff'] = selected_cutoff
-        # reset trial index and last selected combined name so the UI starts fresh for the new cutoff
-        st.session_state['trial_idx'] = 0
-        st.session_state['last_selected_name'] = None
+    full_db_df = load_dataframes([selected_db])
+    full_db_df['manualErrorClassification'] = ''
+    st.session_state['full_db_df'] = full_db_df
 
-    if selected_db:
-        st.write("You selected:", selected_db)
+    # try to load previously saved dataframe for this sqlite file
+    df = load_saved_dataframe(selected_db) if selected_db else None
 
-    # Try to load a previously saved dataframe for this sqlite file and keep it in session state
-    if selected_db and st.session_state.get('loaded_db') == selected_db and 'df' in st.session_state:
-        df = st.session_state['df']
-    else:
-        # load from the saved csv (takes precedence), else read from sqlite
-        df = load_saved_dataframe(selected_db) if selected_db else None
-        if df is None and selected_db:
-            df = load_dataframes([selected_db])
-            df['manualErrorClassification'] = ''
-        # store in session state so it persists across reruns
+    if df is not None and selected_db:
+        # join the full_db_df with df to ensure any new rows from sqlite are included
+        # we want to keep the 'manualErrorClassification' column from df, have it overwrite the 'manualErrorClassification' column from full_db_df
+        df.set_index('langgraph_thread_id', inplace=True)
+        full_db_df.set_index('langgraph_thread_id', inplace=True)
+        assert set(df.columns) == set(full_db_df.columns)
+        full_db_df.update(df)
+        df.reset_index(inplace=True)
+        full_db_df.reset_index(inplace=True)
+
+        df = full_db_df
         st.session_state['df'] = df
-        st.session_state['loaded_db'] = selected_db
 
+    else:
+        st.session_state['df'] = full_db_df
+
+    return
+
+def on_percent_cutoff_callback():
+    selected_cutoff = st.session_state.get('selected_cutoff')
+    st.write(f"You selected percent cutoff: {selected_cutoff}")
+
+    st.session_state['percent_cutoff'] = selected_cutoff
+
+    df = st.session_state['df']
     filtered_df = get_data_by_cutoff(df, selected_cutoff)
 
-    # in the sidebar, show a list of unique combined_names in the dataframe
-    unique_names = filtered_df['combined_name'].unique()
-    selected_name = st.sidebar.selectbox("Select a combined name", unique_names)
-    # If the user selected a new combined_name, reset trial index to 0 so we show the first trial
-    if 'last_selected_name' not in st.session_state:
-        st.session_state['last_selected_name'] = None
-    if selected_name != st.session_state.get('last_selected_name'):
-        st.session_state['last_selected_name'] = selected_name
-        st.session_state['trial_idx'] = 0
+    thread_ids = filtered_df['langgraph_thread_id'].unique()
+    st.session_state['thread_ids'] = thread_ids
 
+    return
+
+def on_select_thread_id_callback():
+    selected_thread_id = st.session_state.get('selected_thread_id')
+    st.write(f"You selected langgraph_thread_id: {selected_thread_id}")
+
+    df = st.session_state.get('df')
+    row_data = df[df['langgraph_thread_id'] == selected_thread_id]
+    assert len(row_data) == 1, f"Expected exactly one row for langgraph_thread_id {selected_thread_id}, got {len(row_data)}"
+
+    st.session_state['sample_data'] = row_data.iloc[0]
+
+    # update the sidebar radio buttons to reflect the current row's manualErrorClassification
+    current_classes = row_data.iloc[0].get('manualErrorClassification', '')
+    current_set = set([t.strip() for t in current_classes.split(';') if t.strip() != ''])
+    for opt in st.session_state.get('global_manual_classes', []):
+        if not opt:
+            continue
+        key = f'class_chk_{opt}'
+        st.session_state[key] = (opt in current_set)
+
+    return
+
+def on_navigate():
+    selected_db = st.session_state.get('selected_db')
+    if (selected_db and 'df' in st.session_state) and (st.session_state['df'] is not None):
+        save_dataframe(selected_db, st.session_state['df'])
+
+    thread_ids = st.session_state.get('thread_ids')
+    current_idx = thread_ids.tolist().index(st.session_state.get('selected_thread_id'))
+    return thread_ids, current_idx
+
+def on_navigate_left():
+    thread_ids, current_idx = on_navigate()
+
+    # load up the next 
+    if current_idx > 0:
+        new_idx = current_idx - 1
+        st.session_state['selected_thread_id'] = thread_ids[new_idx]
+        on_select_thread_id_callback()
+
+    return
+
+def on_navigate_right():
+    thread_ids, current_idx = on_navigate()
+
+    if current_idx < len(thread_ids) - 1:
+        new_idx = current_idx + 1
+        st.session_state['selected_thread_id'] = thread_ids[new_idx]
+        on_select_thread_id_callback()
+
+    return
+
+def show_checkboxes_for_classes():
+    sample_data = st.session_state.get('sample_data')
+    df = st.session_state.get('df')
+    selected_db = st.session_state.get('selected_db')
+
+    current_row_val = sample_data['manualErrorClassification']
+    current_row_set = set([t.strip() for t in current_row_val.split(';') if t.strip() != ''])
+
+    # Render checkboxes for all known classes in session state (immediate save on toggle)
+    updated_row_set = set(current_row_set)
+    error_classes = st.session_state.get('global_manual_classes')
+    for opt in error_classes:
+        key = f'class_chk_{opt}'
+        checked = st.sidebar.checkbox(opt, value=st.session_state[key], key=key)
+        # Reflect the current checked status
+        if checked:
+            updated_row_set.add(opt)
+        else:
+            updated_row_set.discard(opt)
+
+    # if a change is detected, save the df
+    if updated_row_set != current_row_set:
+        new_val = ';'.join(sorted(updated_row_set))
+        # find matching rows in the original df using identifying columns if possible
+        try:
+            match_mask = (
+                (df['langgraph_thread_id'] == sample_data['langgraph_thread_id'])
+            )
+        except Exception:
+            match_mask = df.index == sample_data.name
+
+        df.loc[match_mask, 'manualErrorClassification'] = new_val
+
+        if selected_db:
+            save_dataframe(selected_db, df)
+    
+    st.sidebar.divider()
+    return
+
+
+def setup_global_class_options():
     # Sidebar: show global manual error classification checkboxes.
     # Load master list from manualErrorClasses.txt instead of deriving from dataframe.
-    classes_file = os.path.join(os.path.dirname(__file__), 'manualErrorClasses.txt')
-    classes_file = os.path.abspath(classes_file)
     global_class_options = _read_manual_classes_file(classes_file)
-
-    st.sidebar.divider()
-    st.sidebar.header("Manual Error Classifications")
 
     # Ensure session state containers
     if 'global_manual_classes' not in st.session_state:
@@ -168,6 +272,32 @@ def main():
     for opt in global_class_options:
         if opt not in st.session_state['global_manual_classes']:
             st.session_state['global_manual_classes'].append(opt)
+
+    return 
+
+def main():
+    st.title("Misprediction Case Analysis")
+
+    # show a list of dataframes to choose from
+    st.sidebar.title("Select SQLite Database")
+
+    st.sidebar.selectbox("Select a database file", options=sqlite_files, key='selected_db', on_change=on_select_db_callback, placeholder='Select a database...', index=None)
+
+    st.sidebar.selectbox("Select percent difference cutoff", options=percent_cutoffs, key='selected_cutoff', on_change=on_percent_cutoff_callback, placeholder='Select cutoff...', index=None)
+
+    if 'thread_ids' in st.session_state:
+        thread_ids = st.session_state['thread_ids']
+        st.sidebar.selectbox("Select a langgraph_thread_id", options=thread_ids, key='selected_thread_id', on_change=on_select_thread_id_callback, placeholder='Select a langgraph_thread_id...', index=None)
+
+
+    st.sidebar.divider()
+    st.sidebar.header("Manual Error Classifications")
+
+    setup_global_class_options()
+
+    if 'sample_data' in st.session_state and 'selected_db' in st.session_state:
+        show_checkboxes_for_classes()
+
 
     # UI to add a new classification
     new_class_input = st.sidebar.text_input('Add new classification', '')
@@ -184,146 +314,47 @@ def main():
     st.sidebar.divider()
 
 
-    if selected_name:
-        st.write("You selected:", selected_name)
+    # if someone interacts with the langgraph_thread_id selector
+    if st.session_state.get('selected_thread_id') is not None:
+        selected_thread_id = st.session_state.get('selected_thread_id')
+        st.write("You selected:", selected_thread_id)
 
-        name_df = filtered_df[filtered_df['combined_name'] == selected_name].reset_index(drop=True)
+        sample_data = st.session_state.get('sample_data')
+        assert sample_data is not None, "Sample data should be set when a langgraph_thread_id is selected"
 
-        # Navigation: left/right buttons to switch between trials for the selected combined_name
+        # Navigation: left/right buttons to switch between samples for the selected langgraph_thread_id
         # Use Streamlit session state to persist the currently selected trial index
-        if 'trial_idx' not in st.session_state:
-            st.session_state['trial_idx'] = 0
-
-        # Clamp index to available rows
-        max_idx = max(0, len(name_df) - 1)
-        if st.session_state['trial_idx'] > max_idx:
-            st.session_state['trial_idx'] = max_idx
-
-        # Keep track of the currently displayed row id so we can react to changes
-        # We'll use a tuple of identifying columns if available, else the combined_name+trial_idx
-        if 'displayed_row_id' not in st.session_state:
-            st.session_state['displayed_row_id'] = None
 
         col1, col2, col3 = st.columns([1, 6, 1])
         with col1:
-            if st.button('<'):
-                # move left unless already at 0
-                st.session_state['trial_idx'] = max(0, st.session_state['trial_idx'] - 1)
-                # save current dataframe after navigation (persist session df if available)
-                if selected_db and 'df' in st.session_state and st.session_state['df'] is not None:
-                    save_dataframe(selected_db, st.session_state['df'])
+            st.button('<', key='nav_left', on_click=on_navigate_left)
         with col3:
-            if st.button('\>'):
-                # move right unless already at max
-                st.session_state['trial_idx'] = min(max_idx, st.session_state['trial_idx'] + 1)
-                # save current dataframe after navigation (persist session df if available)
-                if selected_db and 'df' in st.session_state and st.session_state['df'] is not None:
-                    save_dataframe(selected_db, st.session_state['df'])
-        with col2:
-            st.markdown(f"**Trial {st.session_state['trial_idx']+1} of {len(name_df)}**")
-
-        if len(name_df) == 0:
-            st.info('No trials available for the selected combined name and cutoff.')
-        else:
-            # Display only the currently selected trial
-            row = name_df.loc[st.session_state['trial_idx']]
-            # Build a stable identifier for this displayed row
-            try:
-                displayed_id = (
-                    str(row['combined_name']),
-                    str(row['trial_number']),
-                    str(row['model_name']),
-                    str(row['provider'])
-                )
-            except Exception:
-                displayed_id = (str(row.name),)
-
-            # If the displayed row changed, reset checkbox session state to reflect this row
-            if st.session_state.get('displayed_row_id') != displayed_id:
-                st.session_state['displayed_row_id'] = displayed_id
-                # compute classes for this row
-                current_row_val = row.get('manualErrorClassification', '') if isinstance(row.get('manualErrorClassification', ''), str) else ''
-                current_row_set = set([t.strip() for t in current_row_val.split(';') if t.strip() != ''])
-                # reset checkbox keys for all known global classes
-                for opt in st.session_state.get('global_manual_classes', []):
-                    if not opt:
-                        continue
-                    key = f'class_chk_{opt}'
-                    st.session_state[key] = (opt in current_row_set)
-            st.subheader(f"Trial {row['trial_number']} - Model: {row['model_name']}")
-            st.subheader(f'Total num threads: {row["total_num_threads"]},   \nGrid Size: {row["grid_size"]},  \nBlock Size: {row["block_size"]},  \nKernel: {row["kernel_name"]}')
-            st.subheader(f'Exe args: {row["exec_args"]}')
-            st.divider()
-
-            st.write(f"Predicted SP FLOP Count: {row['predicted_sp_flop_count']}")
-            st.write(f"Empirical SP FLOP Count: {row['empirical_sp_flop_count']}")
-            st.write(f"Percent Difference: {row['percent_diff_sp']:.2f}%")
-            st.text_area("SP FLOP Explanation", row.get('predicted_sp_flop_count_explanation', ''), height=100)
-
-            st.write(f"Predicted DP FLOP Count: {row['predicted_dp_flop_count']}")
-            st.write(f"Empirical DP FLOP Count: {row['empirical_dp_flop_count']}")
-            st.write(f"Percent Difference: {row['percent_diff_dp']:.2f}%")
-            st.text_area("DP FLOP Explanation", row.get('predicted_dp_flop_count_explanation', ''), height=100)
-
-            st.write("Source Code:")
-            st.code(row['source_code'], language='cpp')
-
-            # Optionally show the rest of the row as an expander for debugging
-            with st.expander('Full row data'):
-                st.json(row.to_dict())
+            st.button('\>', key='nav_right', on_click=on_navigate_right)
 
 
+        st.subheader(f"Trial {sample_data['trial_number']} - Model: {sample_data['model_name']}")
+        st.subheader(f'Total num threads: {sample_data["total_num_threads"]},   \nGrid Size: {sample_data["grid_size"]},  \nBlock Size: {sample_data["block_size"]},  \nKernel: {sample_data["kernel_name"]}')
+        st.subheader(f'Exe args: {sample_data["exec_args"]}')
+        st.divider()
 
-            # Show the manual classification checkboxes for the current row in the sidebar
-            # We'll derive which boxes to check based on the row's manualErrorClassification value
-            current_full_index = row.name  # index in the filtered_df
+        st.write(f"Predicted SP FLOP Count: {sample_data['predicted_sp_flop_count']}")
+        st.write(f"Empirical SP FLOP Count: {sample_data['empirical_sp_flop_count']}")
+        st.write(f"Percent Difference: {sample_data['percent_diff_sp']:.2f}%")
+        st.text_area("SP FLOP Explanation", sample_data.get('predicted_sp_flop_count_explanation', ''), height=100)
 
-            # Compute current row classes as a set
-            current_row_val = row.get('manualErrorClassification', '') if isinstance(row.get('manualErrorClassification', ''), str) else ''
-            current_row_set = set([t.strip() for t in current_row_val.split(';') if t.strip() != ''])
+        st.write(f"Predicted DP FLOP Count: {sample_data['predicted_dp_flop_count']}")
+        st.write(f"Empirical DP FLOP Count: {sample_data['empirical_dp_flop_count']}")
+        st.write(f"Percent Difference: {sample_data['percent_diff_dp']:.2f}%")
+        st.text_area("DP FLOP Explanation", sample_data.get('predicted_dp_flop_count_explanation', ''), height=100)
 
-            # Render checkboxes for all known classes in session state (immediate save on toggle)
-            updated_row_set = set(current_row_set)
+        st.write("Source Code:")
+        st.code(sample_data['source_code'], language='cpp', line_numbers=True)
 
-            for opt in st.session_state.get('global_manual_classes', []):
-                if not opt:
-                    continue
-                # initialize checkbox state in session_state if not present
-                key = f'class_chk_{opt}'
-                if key not in st.session_state:
-                    st.session_state[key] = (opt in current_row_set)
+        # Optionally show the rest of the sample_data as an expander for debugging
+        with st.expander('Full sample_data data'):
+            st.json(sample_data.to_dict(), expanded=False)
 
-                checked = st.sidebar.checkbox(opt, value=st.session_state[key], key=key)
-                # Reflect the current checked status
-                if checked:
-                    updated_row_set.add(opt)
-                else:
-                    updated_row_set.discard(opt)
 
-            # If the updated set differs from the current row set, persist immediately
-            if updated_row_set != current_row_set:
-                new_val = ';'.join(sorted(updated_row_set))
-                # find matching rows in the original df using identifying columns if possible
-                try:
-                    match_mask = (
-                        (df['combined_name'] == row['combined_name']) &
-                        (df['trial_number'] == row['trial_number']) &
-                        (df['model_name'] == row['model_name']) &
-                        (df['provider'] == row['provider'])
-                    )
-                except Exception:
-                    match_mask = df.index == row.name
-
-                df.loc[match_mask, 'manualErrorClassification'] = new_val
-                filtered_df.loc[filtered_df.index.isin(df.loc[match_mask].index), 'manualErrorClassification'] = new_val
-
-                if selected_db:
-                    save_dataframe(selected_db, df)
-                    # update session state master df so future reruns have the updated copy
-                    st.session_state['df'] = df
-                    st.sidebar.success('Saved classifications to CSV')
-                else:
-                    st.sidebar.error('No database selected; cannot save')
 
 if __name__ == "__main__":
     main()
