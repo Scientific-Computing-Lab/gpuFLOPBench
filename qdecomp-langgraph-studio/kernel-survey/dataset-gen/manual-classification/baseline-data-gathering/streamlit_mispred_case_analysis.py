@@ -169,7 +169,6 @@ def on_percent_cutoff_callback():
 
 def on_select_thread_id_callback():
     selected_thread_id = st.session_state.get('selected_thread_id')
-    st.write(f"You selected langgraph_thread_id: {selected_thread_id}")
 
     df = st.session_state.get('df')
     row_data = df[df['langgraph_thread_id'] == selected_thread_id]
@@ -275,6 +274,16 @@ def setup_global_class_options():
 
     return 
 
+def calc_percent_progress():
+    thread_ids = st.session_state.get('thread_ids')
+    selected_thread_id = st.session_state.get('selected_thread_id')
+    selected_thread_id_idx = thread_ids.tolist().index(selected_thread_id)
+    percent_progress = 100 * (selected_thread_id_idx + 1) / len(thread_ids)
+
+    st.subheader(f"Progress: {selected_thread_id_idx + 1} / {len(thread_ids)} ({percent_progress:.2f}%)")
+    return
+
+
 def main():
     st.title("Misprediction Case Analysis")
 
@@ -289,6 +298,10 @@ def main():
         thread_ids = st.session_state['thread_ids']
         st.sidebar.selectbox("Select a langgraph_thread_id", options=thread_ids, key='selected_thread_id', on_change=on_select_thread_id_callback, placeholder='Select a langgraph_thread_id...', index=None)
 
+
+    if 'selected_thread_id' in st.session_state:
+        selected_thread_id = st.session_state.get('selected_thread_id')
+        st.write(f"You selected langgraph_thread_id: {selected_thread_id}")
 
     st.sidebar.divider()
     st.sidebar.header("Manual Error Classifications")
@@ -311,13 +324,15 @@ def main():
         # ensure the checkbox key exists and is checked by default
         st.session_state[f'class_chk_{new_class}'] = True
         st.sidebar.success(f'Added new classification: {new_class}')
+        setup_global_class_options()
+        show_checkboxes_for_classes()
+
     st.sidebar.divider()
 
 
     # if someone interacts with the langgraph_thread_id selector
     if st.session_state.get('selected_thread_id') is not None:
-        selected_thread_id = st.session_state.get('selected_thread_id')
-        st.write("You selected:", selected_thread_id)
+        calc_percent_progress()
 
         sample_data = st.session_state.get('sample_data')
         assert sample_data is not None, "Sample data should be set when a langgraph_thread_id is selected"
@@ -325,27 +340,28 @@ def main():
         # Navigation: left/right buttons to switch between samples for the selected langgraph_thread_id
         # Use Streamlit session state to persist the currently selected trial index
 
-        col1, col2, col3 = st.columns([1, 6, 1])
+        col1, col2, col3 = st.columns([1, 8, 1])
         with col1:
             st.button('<', key='nav_left', on_click=on_navigate_left)
         with col3:
             st.button('\>', key='nav_right', on_click=on_navigate_right)
 
 
+        st.subheader(f'Kernel: {sample_data["kernel_name"]}')
         st.subheader(f"Trial {sample_data['trial_number']} - Model: {sample_data['model_name']}")
-        st.subheader(f'Total num threads: {sample_data["total_num_threads"]},   \nGrid Size: {sample_data["grid_size"]},  \nBlock Size: {sample_data["block_size"]},  \nKernel: {sample_data["kernel_name"]}')
+        st.subheader(f'Total num threads: {sample_data["total_num_threads"]},   \nGrid Size: {sample_data["grid_size"]},  \nBlock Size: {sample_data["block_size"]}')
         st.subheader(f'Exe args: {sample_data["exec_args"]}')
         st.divider()
 
         st.write(f"Predicted SP FLOP Count: {sample_data['predicted_sp_flop_count']}")
         st.write(f"Empirical SP FLOP Count: {sample_data['empirical_sp_flop_count']}")
         st.write(f"Percent Difference: {sample_data['percent_diff_sp']:.2f}%")
-        st.text_area("SP FLOP Explanation", sample_data.get('predicted_sp_flop_count_explanation', ''), height=100)
+        st.text_area("SP FLOP Explanation", sample_data.get('predicted_sp_flop_count_explanation', ''), height='content')
 
         st.write(f"Predicted DP FLOP Count: {sample_data['predicted_dp_flop_count']}")
         st.write(f"Empirical DP FLOP Count: {sample_data['empirical_dp_flop_count']}")
         st.write(f"Percent Difference: {sample_data['percent_diff_dp']:.2f}%")
-        st.text_area("DP FLOP Explanation", sample_data.get('predicted_dp_flop_count_explanation', ''), height=100)
+        st.text_area("DP FLOP Explanation", sample_data.get('predicted_dp_flop_count_explanation', ''), height='content')
 
         st.write("Source Code:")
         st.code(sample_data['source_code'], language='cpp', line_numbers=True)

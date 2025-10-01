@@ -51,3 +51,4 @@ analysis/offload
 qdecomp-langgraph-studio/real_codes/*
 qdecomp-langgraph-studio/kernel-survey/tree-files/*.tree
 qdecomp-langgraph-studio/kernel-survey/*.data
+**/checkpoints
