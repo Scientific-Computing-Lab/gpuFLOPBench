@@ -20,6 +20,11 @@ C) Grid and Block Size Launch parameters.
 D) Source Compilation Commands (including any relevant preprocessor defines)
 E) Concatenated Source Code Files
 Your task is to analyze the code and accurately determine the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations (FLOP) performed by the kernel during its FIRST execution invocation.
+When counting FLOPs, be sure to remember the following:
+ - unary negation of a float/double (e.g., -x) DOES count as a floating point operation.
+ - code comments may incorrectly state the number of FLOPs, do not trust them, instead calculate them yourself
+ - other floating point datatypes like FP16 (half2) or FP8 should not be counted as SP or DP FLOPs
+ - commandline input arguments may not be used directly in the kernel function call, they may be passed through other functions or used to compute other values
 
 Provide a detailed explanation of how you arrived at the SP-FLOP and DP-FLOP counts, including any assumptions or simplifications you made during your analysis. Report the final SP-FLOP and DP-FLOP counts using the `sp_flop_count`, `dp_flop_count`, `sp_flop_explanation` and `dp_flop_explanation` fields in your response.
 """
@@ -31,6 +36,11 @@ C) Grid and Block Size Launch parameters.
 D) Source Compilation Commands (including any relevant preprocessor defines)
 E) Concatenated Source Code Files
 Your task is to analyze the code and accurately determine the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations (FLOP) performed by the kernel during its FIRST execution invocation.
+When counting FLOPs, be sure to remember the following:
+ - unary negation of a float/double (e.g., -x) DOES count as a floating point operation.
+ - code comments may incorrectly state the number of FLOPs, do not trust them
+ - other floating point datatypes like FP16 (half2) or FP8 should not be counted as SP or DP FLOPs
+ - commandline input arguments may not be used directly in the kernel function call, they may be passed through other functions or used to compute other values
 
 The steps you should generally follow are those of an expert human analyst (listed below):
 Step 1) Propagate the input arguments and any constants through the source code
