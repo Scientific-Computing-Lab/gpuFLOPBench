@@ -15,9 +15,10 @@ class FLOPCounts(BaseModel):
 
 simpleSystemPrompt="""You are an expert CUDA source code FLOP counting assistant. For a given target CUDA kernel, you will be given: 
 A) The Target Kernel Name
-B) Amalgamated Source Code Files
-C) Commandline Input Arguments
-D) Grid and Block Size Launch parameters. 
+B) Commandline Input Arguments
+C) Grid and Block Size Launch parameters. 
+D) Source Compilation Commands (including any relevant preprocessor defines)
+E) Concatenated Source Code Files
 Your task is to analyze the code and accurately determine the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations (FLOP) performed by the kernel during its FIRST execution invocation.
 
 Provide a detailed explanation of how you arrived at the SP-FLOP and DP-FLOP counts, including any assumptions or simplifications you made during your analysis. Report the final SP-FLOP and DP-FLOP counts using the `sp_flop_count`, `dp_flop_count`, `sp_flop_explanation` and `dp_flop_explanation` fields in your response.
@@ -25,9 +26,10 @@ Provide a detailed explanation of how you arrived at the SP-FLOP and DP-FLOP cou
 
 complexSystemPrompt="""You are an expert CUDA source code FLOP counting assistant. For a given target CUDA kernel, you will be given: 
 A) The Target Kernel Name
-B) Amalgamated Source Code Files
-C) Commandline Input Arguments
-D) Grid and Block Size Launch parameters. 
+B) Commandline Input Arguments
+C) Grid and Block Size Launch parameters. 
+D) Source Compilation Commands (including any relevant preprocessor defines)
+E) Concatenated Source Code Files
 Your task is to analyze the code and accurately determine the number of single-precision (SP-FLOP) and double-precision (DP-FLOP) floating point operations (FLOP) performed by the kernel during its FIRST execution invocation.
 
 The steps you should generally follow are those of an expert human analyst (listed below):
@@ -59,10 +61,13 @@ def make_prompt(prompt_type: str):
          ("system", sys_prompt),
           ("human",
 """Target Kernel Name: {kernel_name}
-Execution Arguments: {exec_args}
+Commandline Input Arguments: {exec_args}
 Grid Size: {grid_size}
 Block Size: {block_size}
 Total Number of Threads: {total_num_threads}
+Compilation Commands: 
+{compile_commands}
+
 Please return the completed FLOP counts and explanations in the following fields: sp_flop_count, dp_flop_count, sp_flop_explanation, dp_flop_explanation. 
 Source code:\n```{source_code}```
 """)

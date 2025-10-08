@@ -10,7 +10,7 @@ import csv
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 print('parentdir', parent_dir)
-dataset_path = os.path.join(parent_dir, 'kernels_to_inference_balanced.csv')
+dataset_path = os.path.join(parent_dir, 'kernels_to_inference_balanced_with_compile_commands.csv')
 print('dataset_path', dataset_path)
 df_to_query = pd.read_csv(dataset_path, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
 

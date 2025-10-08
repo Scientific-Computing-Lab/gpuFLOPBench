@@ -18,6 +18,7 @@ class BaselineQueryState(TypedDict, total=False):
     grid_size: str
     block_size: str
     total_num_threads: str
+    compile_commands: str
 
     empirical_sp_flop_count: float
     empirical_dp_flop_count: float
@@ -68,6 +69,7 @@ def get_input_problem(state: BaselineQueryState, config):
             'grid_size' : row['Grid Size'],
             'block_size' : row['Block Size'],
             'total_num_threads' : calc_total_threads(row['Grid Size'], row['Block Size']),
+            'compile_commands' : row['compile_commands'],
             # these "true" values do not get passed to the LLMs
             # they are used to calculate how close the LLM prediction is to the ground-truth
             'empirical_sp_flop_count' : row['SP_FLOP'],
@@ -103,7 +105,8 @@ def query_for_flop_count(state: BaselineQueryState, config):
         "exec_args": state['exec_args'],
         "grid_size": state['grid_size'],
         "block_size": state['block_size'],
-        "total_num_threads": state['total_num_threads']
+        "total_num_threads": state['total_num_threads'],
+        "compile_commands": state['compile_commands']
     })
 
     parsed_result = result['parsed']
