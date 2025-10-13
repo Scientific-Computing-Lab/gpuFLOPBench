@@ -8,7 +8,7 @@ import time
 import traceback
 import ast
 import signal
-from dataset_and_llm import df_to_query as df
+from dataset_and_llm import easy_df_to_query, hard_df_to_query
 from agent import make_graph
 from sqlite_helper import get_thread_ids_from_sqlite
 
@@ -61,6 +61,7 @@ def main():
     parser.add_argument("--skipConfirm", action='store_true', help="Enable skipping confirmation prompts.")
     parser.add_argument("--timeout", type=int, default=120, help="Timeout for each query in seconds. Default is 120 (2 minutes).")
     parser.add_argument("--single_llm_timeout", type=int, default=120, help="Timeout for a single llm query in seconds. Default is 120 secs (2 minutes).")
+    parser.add_argument("--hardDataset", action='store_true', help="Use the hard dataset for querying.")
 
 
     args = parser.parse_args()
@@ -68,9 +69,12 @@ def main():
     prompt_type = "fullPrompt" if args.useFullPrompt else "simplePrompt"
     model_name_sanitized = args.modelName.replace("/", "-")
     provider_name = "azure" if args.useAzure else "openrouter"
+    dataset_type = "hardDataset" if args.hardDataset else "easyDataset"
+
+    df = hard_df_to_query if args.hardDataset else easy_df_to_query
 
     if args.sqlDBFile is None:
-        args.sqlDBFile = f'./checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}.sqlite'
+        args.sqlDBFile = f'./checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}:{dataset_type}.sqlite'
         # print the cwd
         print(f"Current working directory: {os.getcwd()}", flush=True)
 

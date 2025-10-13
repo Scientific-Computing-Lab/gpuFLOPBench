@@ -10,9 +10,14 @@ import csv
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 print('parentdir', parent_dir)
-dataset_path = os.path.join(parent_dir, 'kernels_to_inference_balanced_with_compile_commands.csv')
-print('dataset_path', dataset_path)
-df_to_query = pd.read_csv(dataset_path, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+
+hard_dataset_path = os.path.join(parent_dir, 'hard_kernels_to_inference_unbalanced_with_compile_commands.csv')
+print('hard_dataset_path', hard_dataset_path)
+hard_df_to_query = pd.read_csv(hard_dataset_path, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
+
+easy_dataset_path = os.path.join(parent_dir, 'kernels_to_inference_balanced_with_compile_commands.csv')
+print('easy_dataset_path', easy_dataset_path)
+easy_df_to_query = pd.read_csv(easy_dataset_path, quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
 
 try:
     # for some reason, the AzureChatOpenAI class fails to initialize properly
