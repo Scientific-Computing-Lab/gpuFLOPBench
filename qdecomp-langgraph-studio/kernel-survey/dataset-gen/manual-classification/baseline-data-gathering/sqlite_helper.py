@@ -32,10 +32,8 @@ def get_thread_ids_from_sqlite(full_path: str, success_only: bool = False) -> li
 def split_thread_id_to_parts(thread_id: str) -> dict[str, str]:
     # split the thread_id into model_name, prompt_type, provider_name
     parts = thread_id.split(':')
-    if len(parts) != 10 and len(parts) != 11:
+    if len(parts) != 10:
         raise ValueError(f"Invalid thread_id format: {thread_id}")
-
-    difficulty = parts[10] if len(parts) == 11 else 'easy'
 
     # the different parts are:
     # combined_name, model name, provider url, trial number, prompt type, variant type, nnz_flop_state, top_p, temp
@@ -49,7 +47,6 @@ def split_thread_id_to_parts(thread_id: str) -> dict[str, str]:
         'nnz_flop_state': parts[7],
         'top_p': parts[8],
         'temp': parts[9],
-        'difficulty': difficulty
     }
     return to_return
 
@@ -130,6 +127,8 @@ def sqlitefile_to_dataframe(full_path: str):
                 return "NoneType\nReturned"
             elif "TIMEOUT" in error:
                 return "Query\nTimeout"
+            elif "unsupported_value" in error:
+                return "Unsupported\n Temp/Topp Value"
             else:
                 return error
 
@@ -140,6 +139,25 @@ def sqlitefile_to_dataframe(full_path: str):
     df['has_nz_flops'] = df['nnz_flop_state'].apply(lambda x: 'No' if x == 'Zero SP + DP FLOP' else 'Yes')
 
     #print(df.columns, flush=True)
+    difficulty = 'hard' if 'hardDataset' in os.path.basename(full_path) else 'easy'
+    df['difficulty'] = difficulty
+
+    def parse_predicted_nz_flop_state(row):
+        sp_prediction_is_nz = row['predicted_sp_flop_count'] != 0
+        dp_prediction_is_nz = row['predicted_dp_flop_count'] != 0
+
+        if sp_prediction_is_nz and dp_prediction_is_nz:
+            return 'Non-zero SP + DP FLOP'
+        elif (not sp_prediction_is_nz) and dp_prediction_is_nz:
+            return 'Non-zero DP FLOP'
+        elif sp_prediction_is_nz and (not dp_prediction_is_nz):
+            return 'Non-zero SP FLOP'
+        elif (not sp_prediction_is_nz) and (not dp_prediction_is_nz):
+            return 'Zero SP + DP FLOP'
+
+        return 'unknown'
+
+    df['predicted_nnz_flop_state'] = df.apply(parse_predicted_nz_flop_state, axis=1)
 
     # percent difference, we add a small epsilon to avoid division by zero
     df['percent_diff_sp'] = 100*(df['predicted_sp_flop_count'] - df['empirical_sp_flop_count']) / (df['empirical_sp_flop_count'] + 1e-9)
