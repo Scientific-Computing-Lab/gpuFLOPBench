@@ -541,6 +541,7 @@ IF(BUILD_OMP OR BUILD_CUDA)
     target_link_options(meschach BEFORE PRIVATE "-lm")
 
     FILE(GLOB BL_FORTRAN_SOURCES "${HECBENCH_SRC_DIR}/axhelm-omp/BlasLapack/*.f")
+    MESSAGE("BLAS LAPACK FILES: ${BL_FORTRAN_SOURCES}")
     add_library(BlasLapack STATIC ${BL_FORTRAN_SOURCES})
 
     # Have to custom build boxfilter-sycl objects because it's used by both boxfilter-omp and boxfilter-cuda
