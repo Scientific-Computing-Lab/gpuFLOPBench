@@ -400,6 +400,7 @@ IF(BUILD_CUDA)
     UNZIPFILE("${HECBENCH_SRC_DIR}/slu-cuda/src/nicslu.tar.bz2")
     UNZIPFILE("${HECBENCH_SRC_DIR}/slu-cuda/src/nicslu.tar")
     UNZIPFILE("${HECBENCH_SRC_DIR}/axhelm-cuda/BlasLapack.tar.gz")
+    UNZIPFILE("${HECBENCH_SRC_DIR}/testSNAP-omp/refdata.tar.gz")
 ENDIF()
 
 IF(BUILD_OMP)
