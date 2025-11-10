@@ -43,7 +43,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
       
-      - name: Run CMake Setup/Config Script
+      - name: Run CMake Setup/Config Script (CUDA codes only)
         shell: bash
         run: |
               mkdir -p ./build && cd ./build
@@ -53,7 +53,7 @@ jobs:
               -DCMAKE_CUDA_COMPILER=clang++-18 \
               -DCMAKE_Fortran_COMPILER=gfortran \
               -DBUILD_ALL=ON \
-              -DBUILD_OMP=ON \
+              -DBUILD_OMP=OFF \
               -DBUILD_CUDA=ON \
               -DCUDAToolkit_ROOT=/usr/local/cuda-12.6/ \
               -DCMAKE_C_FLAGS="-O3 -v" \
@@ -67,7 +67,7 @@ jobs:
               -DCUDA_ARCH="86" \
               -S../ -B./
 
-      - name: Build All CUDA/OMP Executables
+      - name: Build All CUDA Executables
         shell: bash
         run: |
           pwd && cd ./build
