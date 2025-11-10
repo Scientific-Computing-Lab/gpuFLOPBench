@@ -170,7 +170,7 @@ MACRO(UNZIPFILE zipfile)
         set(TOEXEC "unzip ${zipfile}")
     ENDIF()
 
-    MESSAGE("Associated command to unzip: [${TOEXEC}]")
+    MESSAGE("\tAssociated command to unzip: [${TOEXEC}]")
 
     execute_process(
         COMMAND /bin/bash -c "${TOEXEC}"
@@ -178,6 +178,8 @@ MACRO(UNZIPFILE zipfile)
         RESULT_VARIABLE RESULT_CODE
         WORKING_DIRECTORY ${FILEDIR}
     )
+
+    MESSAGE("Execution Result: \n${EXEC_OUTPUT}")
 
     # if the result code was not 0
     IF (NOT(RESULT_CODE EQUAL 0))
