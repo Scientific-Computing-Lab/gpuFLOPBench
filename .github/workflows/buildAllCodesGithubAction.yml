@@ -71,8 +71,8 @@ jobs:
         shell: bash
         run: |
           pwd && cd ./build
-          make -j4 all
-          #make -j4 VERBOSE=1 all
+          #make -j4 all
+          make -j1 VERBOSE=1 all
 
       - name: Check Build Executables
         run: |
