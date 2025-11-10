@@ -160,6 +160,8 @@ MACRO(UNZIPFILE zipfile)
     GET_FILENAME_COMPONENT(FILEEXT "${zipfile}" EXT)
     GET_FILENAME_COMPONENT(FILEDIR "${zipfile}" DIRECTORY)
 
+    MESSAGE("Going to unzip file ${zipfile}!")
+    
     IF(FILEEXT MATCHES "\.bz2")
         set(TOEXEC "bzip2 -dkf ${zipfile}")
     ELSEIF(FILEEXT MATCHES "\.tar")
@@ -167,6 +169,8 @@ MACRO(UNZIPFILE zipfile)
     ELSEIF(FILEEXT MATCHES "\.zip")
         set(TOEXEC "unzip ${zipfile}")
     ENDIF()
+
+    MESSAGE("Associated command to unzip: [${TOEXEC}]")
 
     execute_process(
         COMMAND /bin/bash -c "${TOEXEC}"
