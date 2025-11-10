@@ -161,6 +161,8 @@ MACRO(UNZIPFILE zipfile)
     GET_FILENAME_COMPONENT(FILEDIR "${zipfile}" DIRECTORY)
 
     MESSAGE("Going to unzip file ${zipfile}!")
+    MESSAGE("File extension: ${FILEEXT}")
+    MESSAGE("File dir: ${FILEDIR}")
     
     IF(FILEEXT MATCHES "\.bz2")
         set(TOEXEC "bzip2 -dkf ${zipfile}")
