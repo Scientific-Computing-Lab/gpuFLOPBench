@@ -181,7 +181,7 @@ MACRO(UNZIPFILE zipfile)
         WORKING_DIRECTORY ${FILEDIR}
     )
 
-    MESSAGE("Execution Result: \n${EXEC_OUTPUT}")
+    # MESSAGE("Execution Result: \n${EXEC_OUTPUT}")
 
     # if the result code was not 0
     IF (NOT(RESULT_CODE EQUAL 0))
@@ -540,9 +540,15 @@ IF(BUILD_OMP OR BUILD_CUDA)
     target_compile_options(meschach BEFORE PUBLIC "-DHAVE_CONFIG_H" "-DANSI_C")
     target_link_options(meschach BEFORE PRIVATE "-lm")
 
-    FILE(GLOB BL_FORTRAN_SOURCES "${HECBENCH_SRC_DIR}/axhelm-omp/BlasLapack/*.f")
-    MESSAGE("BLAS LAPACK FILES: ${BL_FORTRAN_SOURCES}")
-    add_library(BlasLapack STATIC ${BL_FORTRAN_SOURCES})
+    IF (BUILD_OMP)
+        FILE(GLOB BL_FORTRAN_SOURCES "${HECBENCH_SRC_DIR}/axhelm-omp/BlasLapack/*.f")
+        MESSAGE("BLAS LAPACK FILES: ${BL_FORTRAN_SOURCES}")
+        add_library(BlasLapack STATIC ${BL_FORTRAN_SOURCES})
+    ELSEIF(BUILD_CUDA)
+        FILE(GLOB BL_FORTRAN_SOURCES "${HECBENCH_SRC_DIR}/axhelm-cuda/BlasLapack/*.f")
+        MESSAGE("BLAS LAPACK FILES: ${BL_FORTRAN_SOURCES}")
+        add_library(BlasLapack STATIC ${BL_FORTRAN_SOURCES})
+    ENDIF()
 
     # Have to custom build boxfilter-sycl objects because it's used by both boxfilter-omp and boxfilter-cuda
     #set(BF_BASE_SOURCES "${HECBENCH_SRC_DIR}/boxfilter-sycl/reference.cpp;${HECBENCH_SRC_DIR}/boxfilter-sycl/shrUtils.cpp")
