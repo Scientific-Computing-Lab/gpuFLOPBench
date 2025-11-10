@@ -49,6 +49,7 @@ jobs:
               pwd
               cd ./src/axhelm-cuda/
               tar -xvf BlasLapack.tar.gz
+              echo $GITHUB_WORKSPACE
       
       - name: Run CMake Setup/Config Script (CUDA codes only)
         shell: bash
