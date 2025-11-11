@@ -43,9 +43,9 @@ jobs:
         shell: bash
         run: | 
               wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-              bash ~/Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/anaconda3
-              rm Miniconda3-latest-Linux-x86_64.sh
-              source ~/anaconda3/bin/activate
+              bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $GITHUB_WORKSPACE/anaconda3
+              rm ./Miniconda3-latest-Linux-x86_64.sh
+              source $GITHUB_WORKSPACE/anaconda3/bin/activate
               conda init --all
 
       - name: Checkout Code
