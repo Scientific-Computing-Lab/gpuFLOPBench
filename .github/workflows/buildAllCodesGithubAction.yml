@@ -3,7 +3,7 @@ name: Build ALL CUDA/OMP Codes -- cuda-12.6 -- clang-18 -- cmake 3.28
 on:
   workflow_dispatch:
   push:
-    branches: [kernel-survey]
+    branches: [kernel-survey, camera-ready]
 
 jobs:
   build:
