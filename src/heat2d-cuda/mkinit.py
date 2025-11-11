@@ -12,7 +12,7 @@ def main(argv=None):
     try:
         try:
             opts, args = getopt.getopt(argv[1:], "h", ["help"])
-        except getopt.GetoptError, msg:
+        except getopt.GetoptError as msg:
             raise Usage(msg)
 
         for o, a in opts:
@@ -29,7 +29,7 @@ def main(argv=None):
         if len(args) != 3:
             raise Usage(" Usage: %s [OPTIONS] LX LY FILE_NAME" % argv[0])
 
-    except Usage, err:
+    except Usage as err:
         print(err.msg)
         print(" for help use --help")
         return 2

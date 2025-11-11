@@ -69,7 +69,8 @@ def has_rodinia_datasets():
 def download_rodinia_and_extract():
     print('Downloading Rodinia Data...')
 
-    command = f'wget http://www.cs.virginia.edu/~skadron/lava/Rodinia/Packages/rodinia_3.1.tar.bz2 && tar -xf ./rodinia_3.1.tar.bz2 rodinia_3.1/data && mv ./rodinia_3.1/data {SRC_DIR}/data'
+    # http://www.cs.virginia.edu/~skadron/lava/rodinia/Packages/rodinia_3.1.tar.bz2 
+    command = f'wget http://www.cs.virginia.edu/~skadron/lava/rodinia/Packages/rodinia_3.1.tar.bz2 && tar -xf ./rodinia_3.1.tar.bz2 rodinia_3.1/data && mv ./rodinia_3.1/data {SRC_DIR}/data'
     print('executing command', command)
     result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
 
@@ -80,8 +81,12 @@ def download_rodinia_and_extract():
 
     return
 
-def run_setup_command_for_file(targetFile, command, targetDir=DOWNLOAD_DIR):
+def run_setup_command_for_file(targetFile, command, targetDir=None):
+    if targetDir is None:
+        targetDir = DOWNLOAD_DIR
     if not os.path.isfile(targetFile):
+        print('running command: ', command)
+        print('targetDir: ', targetDir)
         result = subprocess.run(args=command, cwd=targetDir, shell=True)
         assert result.returncode == 0
     return
@@ -166,7 +171,7 @@ def download_files_for_some_targets(targets):
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
 
-        elif basename == 'opticalFlow-':
+        elif 'opticalFlow-' in basename:
             if not os.path.isfile(f'{srcDir}/frame10.ppm'):
                 command = f'wget --no-check-certificate https://github.com/NVIDIA/cuda-samples/raw/c94ff366aed18c797b8a85dfaac7817b0228b420/Samples/5_Domain_Specific/HSOpticalFlow/data/frame10.ppm && mv ./frame10.ppm {srcDir}/'
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
@@ -176,13 +181,15 @@ def download_files_for_some_targets(targets):
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
 
-        elif basename == 'tsne-':
+        elif 'tsne-' in basename:
             if not os.path.isfile(f'{srcDir}/data/points.txt'):
                 command = f'wget --no-check-certificate https://raw.githubusercontent.com/oneapi-src/Velocity-Bench/refs/heads/main/tsne/data/points.txt && mv ./points.txt {srcDir}/data/points.txt'
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
 
-        elif basename == 'tpacf-':
+        elif 'tpacf-' in basename:
+            result = subprocess.run(f'mkdir -p ./data/small', cwd=srcDir, shell=True)
+            assert result.returncode == 0
             # this only downloads the two files necessary for the beginning of the program to hit the kernels for profiling
             if not os.path.isfile(f'{srcDir}/data/small/Datapnts.1'):
                 command = f'wget --no-check-certificate https://raw.githubusercontent.com/fengzhangcs/CoRunBench/refs/heads/master/parboil/datasets/tpacf/small/input/Datapnts.1 && mv ./Datapnts.1 {srcDir}/data/small/Datapnts.1'
@@ -246,7 +253,7 @@ def download_files_for_some_targets(targets):
 
         elif basename == 'mcpr-cuda':
             if not os.path.isfile(f'{srcDir}/alphas.csv'):
-                command = f'bunzip2 alphas.csv.bz2'
+                command = f'wget --no-check-certificate https://github.com/zjin-lcf/HeCBench/raw/refs/heads/master/src/mcpr-cuda/alphas.csv.bz2 && bunzip2 alphas.csv.bz2'
                 result = subprocess.run(command, cwd=srcDir, shell=True)
                 assert result.returncode == 0
 
@@ -271,8 +278,10 @@ def download_files_for_some_targets(targets):
         # need to have python2 installed for this to work
         elif basename == 'heat2d-cuda':
             if not os.path.isfile(f'{srcDir}/data.txt'):
-                command = f'python2 mkinit.py 4096 8192 data.txt'
-                result = subprocess.run(command, cwd=srcDir, shell=True)
+                command = f'python3 mkinit.py 4096 8192 data.txt'
+                result = subprocess.run(command, cwd=srcDir, shell=True, capture_output=True)
+                print(result.stdout)
+                print(result.stderr)
                 assert result.returncode == 0
 
         elif (basename == 'frna-cuda') or (basename == 'prna-cuda'):
@@ -337,6 +346,7 @@ def get_runnable_targets():
 
             # check we have the source code too
             assert os.path.isdir(execSrcDir)
+            assert execSrcDir != ''
 
             execDict = {'basename':basename, 
                         'exe':entry, 
@@ -534,7 +544,7 @@ def search_and_extract_file(inFile):
             print('Extracted zip archive:', filename)
 
         # now let's check that the file exists
-        assert os.path.exists(inFile)
+        assert os.path.exists(inFile), f'Could not find input file: {inFile} after extracting archives!'
 
     return
 
@@ -551,7 +561,7 @@ def check_and_unzip_input_files(targets:list):
         if len(inputFiles) > 0:
             for inFile in inputFiles:
                 # if the word `output` is in the filename, we skip checking for it
-                if not ('output' in inFile.lower()):
+                if not ('output' in inFile.lower() or 'results' in inFile.lower()):
                     print(f'looking for input file: {srcDir}/{inFile}')
                     search_and_extract_file(f'{srcDir}/{inFile}')
 

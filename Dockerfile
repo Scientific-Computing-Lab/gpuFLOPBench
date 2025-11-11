@@ -9,11 +9,16 @@ SHELL ["/bin/bash", "-c"]
 # Update packages, install build dependencies, and the specified version of CMake
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y wget make git gfortran libomp-18-dev libboost-all-dev clang-18 clang-tools-18 && \
+    apt-get install -y wget make git gfortran libomp-18-dev libboost-all-dev clang-18 clang-tools-18 unzip && \
     wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0-linux-x86_64.sh && \
     chmod +x cmake-3.28.0-linux-x86_64.sh && \
     ./cmake-3.28.0-linux-x86_64.sh --skip-license --prefix=/usr/local && \
     rm cmake-3.28.0-linux-x86_64.sh
+
+# setup alternative names for the compiler
+RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100 && \
+    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100 && \
+    update-alternatives --install /usr/bin/llvm-cxxfilt llvm-cxxfilt /usr/bin/llvm-cxxfilt-18 100
 
 
 # Set the working directory

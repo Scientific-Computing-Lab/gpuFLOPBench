@@ -46,12 +46,13 @@ For checking the build process, we include the following Github Action in the `.
 This sets up a Docker container with all the necessary programs and code to build all the HecBench codes with our CMakeLists approach.
 We also provide a `Dockerfile` so you can set up and run our code on your own system with a GPU.
 
-[![Build ALL CUDA/OMP Codes](https://github.com/gregbolet/HeCBench-roofline/actions/workflows/buildAllCodesGithubAction.yml/badge.svg)](https://github.com/gregbolet/HeCBench-roofline/actions/workflows/buildAllCodesGithubAction.yml)
+[![Build ALL CUDA/OMP Codes](https://github.com/gregbolet/gpu-flopbench/actions/workflows/buildAllCodesGithubAction.yml/badge.svg)](https://github.com/gregbolet/gpu-flopbench/actions/workflows/buildAllCodesGithubAction.yml)
 
 ## Building
 
 Execute the following command to get the Makefile generated and to start the build process.
 This will automatically `make` all the programs, **you'll NEED to edit the `runBuild.sh` script to properly set any compilers/options for the codes to build**.
+NOTE: If you're running this from a Docker container generated from our Dockerfile, it should work out-of-the-box.
 By default, we have everything building with `clang++` and `clang`, this should mostly work out-of-the-box but some include paths may need to be set/overriden. (SEE BELOW)
 ```
 source ./runBuild.sh
@@ -79,10 +80,11 @@ Here's a list of other common build issues that might help if you're encounterin
 We used Python3 (v3.11.11) for executing our Python scripts.
 The `requirements.txt` file contains all the necessary packages and their versions that should be installed prior to using any of our Python scripts.
 It is strongly advised to set up a new Conda environment to not mess up the base Python installation on your system.
+NOTE: This is already done for you if you're using the supplied Dockerfile.
 
 ```
-conda create --name "hecbench-roofline" python=3.11.11
-conda activate hecbench-roofline
+conda create --name "gpu-flopbench" python=3.11.11
+conda activate gpu-flopbench
 pip install -r ./requirements.txt
 ```
 
@@ -91,12 +93,12 @@ pip install -r ./requirements.txt
 Once all the codes are built, we can start the data collection process. We have our own script called `gatherData.py` which can be invoked to gather the roofline benchmarking data of each of the built programs.
 
 ```
-LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=/home/gbolet/hecbench-roofline/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=roofline-data.csv 2>&1 | tee runlog.txt
+LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=roofline-data.csv 2>&1 | tee runlog.txt
 ```
 
 This will automatically invoke each of the built executables, using `ncu` (NVIDIA Nsight Compute) to profile each of the kernels in the executable. Some of the codes require files to be downloaded proir, this script takes care of the downloading process and makes sure that all the requested files are in place.
 The `DATAPATH` environment variable is only needed by `frna-cuda` and `prna-cuda`, so if you're not running those, you can drop it.
-The `LD_LIBRARY_PATH` environment variable is for all the OMP codes, this is the path to the `libomptarget.so` library. One some machines CMake isn't adding the path, so we just manually add it. We should probably `rpath` this in in the future, but for now this is fine.
+The `LD_LIBRARY_PATH` environment variable is for all the OMP codes, this is the path to the `libomptarget.so` library. On some machines CMake isn't adding the path, so we just manually add it. We should probably `rpath` this in in the future, but for now this is fine.
 
 The internal workflow at a high level looks like the following:
 1. Download rodinia dataset (skip if requested with `--skipRodiniaDownload`).
