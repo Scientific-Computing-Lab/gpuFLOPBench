@@ -39,6 +39,14 @@ jobs:
            chmod +x cmake-3.28.0-linux-x86_64.sh
            ./cmake-3.28.0-linux-x86_64.sh --skip-license --prefix=/usr/local
 
+      - name: Install Miniconda
+        shell: bash
+        run: | 
+              wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+              bash ~/Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/anaconda3
+              rm Miniconda3-latest-Linux-x86_64.sh
+              source ~/anaconda3/bin/activate
+              conda init --all
 
       - name: Checkout Code
         uses: actions/checkout@v4
