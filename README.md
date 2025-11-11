@@ -15,26 +15,36 @@ Target codes thus-far:
   
 ## Citing our Work
 
-This work was accepted at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
+This work was presented at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
 Upon having our paper accepted, we pre-published on arXiv in case people wanted to cite us.
 
-[arXiv paper link here](https://arxiv.org/abs/2505.03988) -- will update once HPDC 2025 proceedings is published.
+[paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 
 
 BibTeX reference below.
 ```
-@article{bolet2025can,
-  title={Can Large Language Models Predict Parallel Code Performance?},
-  author={Bolet, Gregory and Georgakoudis, Giorgis and Menon, Harshitha and Parasyris, Konstantinos and Hasabnis, Niranjan and Estes, Hayden and Cameron, Kirk W and Oren, Gal},
-  journal={arXiv preprint arXiv:2505.03988},
-  year={2025}
+@inproceedings{10.1145/3731545.3743645,
+author = {Bolet, Gregory and Georgakoudis, Giorgis and Menon, Harshitha and Parasyris, Konstantinos and Hasabnis, Niranjan and Estes, Hayden and Cameron, Kirk and Oren, Gal},
+title = {Can Large Language Models Predict Parallel Code Performance?},
+year = {2025},
+isbn = {9798400718694},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3731545.3743645},
+doi = {10.1145/3731545.3743645},
+booktitle = {Proceedings of the 34th International Symposium on High-Performance Parallel and Distributed Computing},
+articleno = {41},
+numpages = {6},
+keywords = {roofline model, LLMs, CUDA, OpenMP, GPU, performance},
+location = {University of Notre Dame Conference Facilities, Notre Dame, IN, USA},
+series = {HPDC '25}
 }
 ```
 
 ## Github Actions Status
 
-For demonstrating the build process, we include the following Github Action in the `.github/workflows/buildAllCodesGithubAction.yml` file.
+For checking the build process, we include the following Github Action in the `.github/workflows/buildAllCodesGithubAction.yml` file.
 This sets up a Docker container with all the necessary programs and code to build all the HecBench codes with our CMakeLists approach.
-You can copy the steps of this GitHub Action yaml file in a private Docker container to recreate the executables.
+We also provide a `Dockerfile` so you can set up and run our code on your own system with a GPU.
 
 [![Build ALL CUDA/OMP Codes](https://github.com/gregbolet/HeCBench-roofline/actions/workflows/buildAllCodesGithubAction.yml/badge.svg)](https://github.com/gregbolet/HeCBench-roofline/actions/workflows/buildAllCodesGithubAction.yml)
 
