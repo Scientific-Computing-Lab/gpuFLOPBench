@@ -22,6 +22,9 @@ WORKDIR /gpu-flopbench
 # Copy the requirements file into the container
 COPY ./requirements.txt ./requirements.txt
 
+# if we are on a windows host, we need to remove the CRLF characters from all the files
+RUN sed -i 's/\r$//' requirements.txt
+
 # install miniconda
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
     bash ./Miniconda3-latest-Linux-x86_64.sh -b -p ~/anaconda3 && \
@@ -47,8 +50,17 @@ RUN source ~/anaconda3/bin/activate && \
 # Copy the source code into the container
 COPY . .
 
-# Config with CMake, and build all the codes
-#RUN source ./runBuild.sh 
+# if we are on a windows host, we need to remove the CRLF characters from all the files
+#RUN find . -type f -exec sed -i 's/\r$//' {} +
+RUN find . -type f \
+    -not -name "*.gz" \
+    -not -name "*.zip" \
+    -not -name "*.rar" \
+    -not -name "*.7z" \
+    -not -name "*.tar" \
+    -not -name "*.bz2" \
+    -not -name "*.tar.*" \
+    -exec sed -i 's/\r$//' {} +
 
-# Verify that executables were built
-#RUN test -n "$(find build -maxdepth 1 -type f -executable)" || (echo "No executables found in ./build" && exit 1)
+# one of the issues with a windows host is that the execute permissions are not preserved when copying files into the container
+# this is okay, and it seems like everything works fine without needing to change it.
