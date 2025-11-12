@@ -135,7 +135,7 @@ def download_files_for_some_targets(targets):
 
         elif 'permutate' in basename:
             tFile = os.path.normpath(f'{srcDir}/../permutate-cuda/test_data/truerand_1bit.bin')
-            command = f'git clone https://github.com/yeah1kim/yeah_GPU_SP800_90B_IID ./permutate-cuda && cp -r ./permutate-cuda/test_data {srcDir}/../permutate-cuda/test_data'
+            command = f'git clone --verbose https://github.com/yeah1kim/yeah_GPU_SP800_90B_IID ./permutate-cuda && cp -r ./permutate-cuda/test_data/ {srcDir}/../permutate-cuda/test_data'
             if not os.path.isfile(tFile):
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
@@ -344,8 +344,13 @@ def get_runnable_targets():
             basename = os.path.basename(entry)
             execSrcDir = os.path.abspath(f'{SRC_DIR}/{basename}')
 
+            if ('.cpp' in basename) or ('.c' in basename) or ('.o' in basename) or ('.so' in basename):
+                # skip non-executable files
+                # this happens when we source from windows systems -- cpp files are seen as executables
+                continue
+
             # check we have the source code too
-            assert os.path.isdir(execSrcDir)
+            assert os.path.isdir(execSrcDir), f'Could not find source dir for executable {basename} at expected location: {execSrcDir} ({SRC_DIR}/{basename}) entry: {entry}'
             assert execSrcDir != ''
 
             execDict = {'basename':basename, 
@@ -797,10 +802,10 @@ def execute_target(target:dict, kernelName:str):
     #ncuCommand = f'ncu -f -o {reportFileName} --section SpeedOfLight_RooflineChart -c 2 -k "regex:{kernelName}"'
     # without clock-control=none, the GPU executes at the base/default clock speed that NCU selects for it
     #ncuCommand = f'ncu -f -o {reportFileName} --clock-control=none --set roofline --metrics smsp__sass_thread_inst_executed_op_integer_pred_on -c 2 -k "regex:{kernelName}"'
-    ncuCommand = f'ncu -f -o {reportFileName} --set roofline --metrics smsp__sass_thread_inst_executed_op_integer_pred_on -c 2 -k "regex:{kernelName}"'
+    ncuCommand = f'ncu -f -o {reportFileName} --set roofline --metrics smsp__sass_thread_inst_executed_op_integer_pred_on -c 2 -k "{kernelName}"'
     exeCommand = f'{ncuCommand} {BUILD_DIR}/{basename} {exeArgs}'.rstrip()
 
-    print('executing command:', exeCommand)
+    print('executing command:', exeCommand, flush=True)
 
     # we print the stderr to the stdout for analysis
     # 15 minute timeout for now?
