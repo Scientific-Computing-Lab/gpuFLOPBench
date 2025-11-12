@@ -50,10 +50,10 @@ EXTRA_LINK_FLAGS=""
 
 # The CUDAToolkit_ROOT can be left as it, Cmake will auto-detect the correct one
 
-cmake -DCMAKE_C_COMPILER=clang-18 \
-      -DCMAKE_CXX_COMPILER=clang++-18 \
-      -DCMAKE_CUDA_HOST_COMPILER=clang++-18 \
-      -DCMAKE_CUDA_COMPILER=clang++-18 \
+cmake -DCMAKE_C_COMPILER=clang \
+      -DCMAKE_CXX_COMPILER=clang++ \
+      -DCMAKE_CUDA_HOST_COMPILER=clang++ \
+      -DCMAKE_CUDA_COMPILER=clang++ \
       -DBUILD_ALL=ON \
       -DBUILD_OMP=OFF \
       -DBUILD_CUDA=ON \
