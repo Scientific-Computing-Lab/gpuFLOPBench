@@ -135,7 +135,7 @@ def download_files_for_some_targets(targets):
 
         elif 'permutate' in basename:
             tFile = os.path.normpath(f'{srcDir}/../permutate-cuda/test_data/truerand_1bit.bin')
-            command = f'git clone --verbose https://github.com/yeah1kim/yeah_GPU_SP800_90B_IID ./permutate-cuda && cp -r ./permutate-cuda/test_data/ {srcDir}/../permutate-cuda/test_data'
+            command = f'git clone --verbose --progress https://github.com/yeah1kim/yeah_GPU_SP800_90B_IID ./permutate-cuda && cp -r ./permutate-cuda/test_data/ {srcDir}/../permutate-cuda/test_data'
             if not os.path.isfile(tFile):
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
