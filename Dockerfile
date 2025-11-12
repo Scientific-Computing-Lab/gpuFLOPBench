@@ -67,5 +67,8 @@ RUN find . -type f \
     -not -name "*.tar.*" \
     -exec sed -i 's/\r$//' {} +
 
+# write out to the bashrc to source conda and activate the environment on container startup
+RUN echo 'conda activate gpu-flopbench' >> ~/.bashrc
+
 # one of the issues with a windows host is that the execute permissions are not preserved when copying files into the container
 # this is okay, and it seems like everything works fine without needing to change it.
