@@ -1003,6 +1003,10 @@ def execute_targets(targets:list, dfFilename:str, skipRuns:bool=False):
                     stdout = execResult.stdout.decode('UTF-8')
                     assert execResult.returncode == 0, f'error in execution!\n {stdout}'
 
+                    if '==WARNING== No kernels were profiled.' in stdout:
+                        print(f'\tSKIPWARNING No kernels were profiled for {basename}-[{kernelName}] -- skipping!')
+                        continue
+
                     rawDF = roofline_results_to_df(rooflineResult)
                     roofDF = calc_roofline_data(rawDF)
 
@@ -1014,8 +1018,8 @@ def execute_targets(targets:list, dfFilename:str, skipRuns:bool=False):
                 else:
                     # doing this now to skip failing runs
                     continue
-                    dataDict = {'targetName':[basename], 'exeArgs':[exeArgs], 'kernelName':[kernelName]}
-                    subset = pd.DataFrame(dataDict)
+                    #dataDict = {'targetName':[basename], 'exeArgs':[exeArgs], 'kernelName':[kernelName]}
+                    #subset = pd.DataFrame(dataDict)
 
             # if we skip the run, read the nsys-rep files
             else:

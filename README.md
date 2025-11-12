@@ -48,16 +48,76 @@ We also provide a `Dockerfile` so you can set up and run our code on your own sy
 
 [![Build ALL CUDA/OMP Codes](https://github.com/gregbolet/gpu-flopbench/actions/workflows/buildAllCodesGithubAction.yml/badge.svg)](https://github.com/gregbolet/gpu-flopbench/actions/workflows/buildAllCodesGithubAction.yml)
 
-## Building
+## Docker Setup Instructions
 
-Execute the following command to get the Makefile generated and to start the build process.
-This will automatically `make` all the programs, **you'll NEED to edit the `runBuild.sh` script to properly set any compilers/options for the codes to build**.
-NOTE: If you're running this from a Docker container generated from our Dockerfile, it should work out-of-the-box.
-By default, we have everything building with `clang++` and `clang`, this should mostly work out-of-the-box but some include paths may need to be set/overriden. (SEE BELOW)
+For ease-of-reproducibility, we supply a `Dockerfile` with the necessary steps to recreate our environment and dataset using your own GPU hardware.
+The following is a list of steps to help you get set up and into the main bash shell of the container.
+
+‼️‼️
+We note that the base container image will take up about 40 GB of storage space; once we start building codes and gathering profiling data, the disk usage will jump up to about 50 GB.
+Please ensure your system has enough storage space before continuing.
+‼️‼️
+
+```
+git clone git@github.com:gregbolet/gpu-FLOPBench.git ./gpu-flopbench
+cd ./gpu-flopbench
+docker build --progress=plain -t 'gpu-flopbench' .
+docker run -ti --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
+docker exec -it gpu-flopbench-container /bin/bash
+```
+
+Note: if you're on a **Windows Docker Desktop** host, be sure to enable the following:
+```
+NVIDIA Control Panel >> Desktop Tab >> Enable Developer Settings (make sure it's enabled)
+then
+NVIDIA Control Panel >> Select a Task... Tree Pane >> Developer (expand section) >> Manage GPU Performance Counters >> Allow access to the GPU performance counters to all users (make sure this is enabled)
+then
+restart Docker Desktop
+```
+
+## Docker Data Collection Instructions (CUDA program building & profiling)
+
+Once you're in the main bash shell of the container, you should be by default in the `/gpu-flopbench` directory with a conda environment called `gpu-flopbench`. 
+We can now start building all the codes and collecting their performance counter data! 🌈😊
+
+Run the following commands from the `gpu-flopbench` main project directory within the Docker container (they should work without issue):
 ```
 source ./runBuild.sh
 ```
-We originally had the CUDA codes building with `nvcc` but for simplicity have switch to just LLVM. You may still be able to build the codes with `nvcc`, but it may take some modifications to the build pipeline.
+^ Depending on the number of cores on your CPU, this can take anywhere from 5-20 minutes.
+It's essentially building all the codes using our `CMakeLists.txt` file.
+Once this is done, we can start gathering CUDA kernel profiling data with the following command:
+```
+LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=roofline-data.csv 2>&1 | tee runlog.txt
+```
+^ This process will take about 5-6 hours, so please have someone around to babysit in case any unexpected issues arise.
+We tested this on our own Docker container and had no issues.
+
+# Solo (no Docker) Instructions
+
+Below is a list of instructions for reproducing what is done in the above Docker container, but instead on your own system.
+This path is laden with more unexpected complications and potentially more debugging effort, so continue at your own risk.
+A lot of the CUDA codes we built had their compilation instructions tailored to our particular system, so you may end up having to do more work to get all the codes built and running if you decide to change compiler, compiler versions, or CUDA versions.
+In future work we would like to make this process of building the codes agnostic to the system, but for now this is what we have working.
+
+## Building
+
+Start by simply cloning our repo.
+```
+git clone git@github.com:gregbolet/gpu-FLOPBench.git ./gpu-flopbench
+cd ./gpu-flopbench
+```
+
+Execute the following command to get the Makefile generated and to start the build process.
+This will automatically `make` all the programs, **you'll NEED to edit the `runBuild.sh` script to properly set any compilers/options for the codes to build**.
+By default, we have everything building with `clang++` and `clang`, this should mostly work out-of-the-box but some include paths may need to be set/overriden. (SEE BELOW)
+
+```
+source ./runBuild.sh
+```
+NOTE: If you're running this from a Docker container generated from our Dockerfile, it should work out-of-the-box.
+We originally had the CUDA codes building with `nvcc`, but to be able to also build SYCL and OMP codes, we switched to just LLVM. You may still be able to build the codes with `nvcc`, but it may take some modifications to the build pipeline.
+We have future plans to sample SYCL and OMP codes, but for now, this work focuses on CUDA codes.
 
 
 ## Common Build Issues
@@ -75,18 +135,26 @@ Here's a list of other common build issues that might help if you're encounterin
 - missing libs to link
 - putting some search/include dirs before others when compiling (duplicate filenames can cause header include mixups)
 
+We note that our entire build process is captured in one `CMakeLists.txt` file.
+This was done purposely to be able to build all the codes in a batch manner, as having to manually go in and modify individual HeCBench Makefiles was tiresome.
+
+Essentially, our `CMakeLists.txt` file treats each `src/*-cuda` and `src/*-omp` directory as a single CMake/Makefile target, with the corresponding output executable having the same name as its `src` directory.
+We automatically include many of the sub-directories for header files. 
+The reason why our `CMakeLists.txt` file is so long is because there were many codes that we had to manually modify their build process to get them to build correctly.
+This took a while to do, but ultimately makes the build process much easier and manageable.
+
 ## Python Environment Setup
 
 We used Python3 (v3.11.11) for executing our Python scripts.
 The `requirements.txt` file contains all the necessary packages and their versions that should be installed prior to using any of our Python scripts.
 It is strongly advised to set up a new Conda environment to not mess up the base Python installation on your system.
-NOTE: This is already done for you if you're using the supplied Dockerfile.
 
 ```
 conda create --name "gpu-flopbench" python=3.11.11
 conda activate gpu-flopbench
 pip install -r ./requirements.txt
 ```
+NOTE: This is already done for you if you're using the supplied Dockerfile.
 
 ## Gathering Roofline Data
 
@@ -95,6 +163,7 @@ Once all the codes are built, we can start the data collection process. We have 
 ```
 LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=roofline-data.csv 2>&1 | tee runlog.txt
 ```
+NOTE: This command should work out-of-the-box if you built a container using our Dockerfile.
 
 This will automatically invoke each of the built executables, using `ncu` (NVIDIA Nsight Compute) to profile each of the kernels in the executable. Some of the codes require files to be downloaded proir, this script takes care of the downloading process and makes sure that all the requested files are in place.
 The `DATAPATH` environment variable is only needed by `frna-cuda` and `prna-cuda`, so if you're not running those, you can drop it.
@@ -113,6 +182,8 @@ The internal workflow at a high level looks like the following:
 
 
 The `gatherData.py` script will emit a CSV file called `roofline-data.csv` containing all the benchmarking data. After each kernel is run, the data is written out to the last line of the CSV file. We encourage writing the results of the execution to a log file for later error/execution analysis. 
+
+‼️‼️This process of profiling all the codes can take a while (roughly 6-7 hours), we suggest leaving the profiling running while someone babysits in case of an unexpected error. ‼️‼️
 
 
 ## Scraping the CUDA kernels
