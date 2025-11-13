@@ -1,5 +1,7 @@
 FROM nvidia/cuda:12.6.0-devel-ubuntu24.04
 
+ARG HOSTOS=linux 
+
 # Set non-interactive frontend for apt-get to avoid prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -10,6 +12,7 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y wget make git gfortran libomp-18-dev libboost-all-dev clang-18 clang-tools-18 unzip && \
+    apt-get install -y imagemagick && \
     wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0-linux-x86_64.sh && \
     chmod +x cmake-3.28.0-linux-x86_64.sh && \
     ./cmake-3.28.0-linux-x86_64.sh --skip-license --prefix=/usr/local && \
@@ -57,15 +60,20 @@ COPY . .
 
 # if we are on a windows host, we need to remove the CRLF characters from all the files
 #RUN find . -type f -exec sed -i 's/\r$//' {} +
-RUN find . -type f \
-    -not -name "*.gz" \
-    -not -name "*.zip" \
-    -not -name "*.rar" \
-    -not -name "*.7z" \
-    -not -name "*.tar" \
-    -not -name "*.bz2" \
-    -not -name "*.tar.*" \
-    -exec sed -i 's/\r$//' {} +
+RUN if [ "$HOSTOS" = "windows" ]; then \
+    echo "Removing CRLF characters from files..."; \
+    find . -type f \
+        -not -name "*.gz" \
+        -not -name "*.zip" \
+        -not -name "*.rar" \
+        -not -name "*.7z" \
+        -not -name "*.tar" \
+        -not -name "*.bz2" \
+        -not -name "*.tar.*" \
+        -exec sed -i 's/\r$//' {} +; \
+    else \
+    echo "HOSTOS is not windows; skipping CRLF removal."; \
+    fi 
 
 # write out to the bashrc to source conda and activate the environment on container startup
 RUN echo 'conda activate gpu-flopbench' >> ~/.bashrc

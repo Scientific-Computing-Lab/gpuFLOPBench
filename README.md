@@ -18,9 +18,9 @@ Target codes thus-far:
 This work was presented at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
 Upon having our paper accepted, we pre-published on arXiv in case people wanted to cite us.
 
-[paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 
+📃📃 [paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 🔗🔗
 
-BibTeX reference below.
+📜 BibTeX reference below.
 ```
 @inproceedings{10.1145/3731545.3743645,
 author = {Bolet, Gregory and Georgakoudis, Giorgis and Menon, Harshitha and Parasyris, Konstantinos and Hasabnis, Niranjan and Estes, Hayden and Cameron, Kirk and Oren, Gal},
@@ -54,12 +54,12 @@ For ease-of-reproducibility, we supply a `Dockerfile` with the necessary steps t
 The following is a list of steps to help you get set up and into the main bash shell of the container.
 
 ‼️‼️
-We note that the base container image will take up about 40 GB of storage space; once we start building codes and gathering profiling data, the disk usage will jump up to about 50 GB.
+We note that the base container image will take up about 15 GB of storage space, which then jumps to 40 GB when we build the container; once we start building codes and gathering profiling data, the disk usage will jump up to about 50 GB.
 Please ensure your system has enough storage space before continuing.
 ‼️‼️
 
 ```
-git clone git@github.com:gregbolet/gpu-FLOPBench.git ./gpu-flopbench
+git clone git@github.com:gregbolet/gpu-flopbench.git ./gpu-flopbench
 cd ./gpu-flopbench
 docker build --progress=plain -t 'gpu-flopbench' .
 docker run -ti --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
@@ -104,7 +104,7 @@ In future work we would like to make this process of building the codes agnostic
 
 Start by simply cloning our repo.
 ```
-git clone git@github.com:gregbolet/gpu-FLOPBench.git ./gpu-flopbench
+git clone git@github.com:gregbolet/gpu-flopbench.git ./gpu-flopbench
 cd ./gpu-flopbench
 ```
 
@@ -116,6 +116,7 @@ By default, we have everything building with `clang++` and `clang`, this should 
 source ./runBuild.sh
 ```
 NOTE: If you're running this from a Docker container generated from our Dockerfile, it should work out-of-the-box.
+
 We originally had the CUDA codes building with `nvcc`, but to be able to also build SYCL and OMP codes, we switched to just LLVM. You may still be able to build the codes with `nvcc`, but it may take some modifications to the build pipeline.
 We have future plans to sample SYCL and OMP codes, but for now, this work focuses on CUDA codes.
 
@@ -202,7 +203,7 @@ python3 simpleScrapeKernels.py
 The scraped output will be a file called `simple-scraped-kernels-with-sass.json` in JSON format. 
 We particularly do this simple form of scraping because we're struggling to have a proper AST traversal script that can properly extract CUDA kernels from source. 
 This is a future step we're working on. For now, this file contains all the source files from each executable that was built in the `build` directory.
-Because this is an update version, we include SASS code in the scrape, but these are not used in the final results of this paper.
+Because this is an updated version, we include SASS code in the scrape, but these are not used in the final results of this paper.
 
 ## Pruning the Scraped Kernels
 
