@@ -275,6 +275,24 @@ def download_files_for_some_targets(targets):
                 result = subprocess.run(command, cwd=DOWNLOAD_DIR, shell=True)
                 assert result.returncode == 0
 
+        elif basename == 'ge-spmm-cuda':
+            if not os.path.isfile(f'{srcDir}/data/snap/amazon0302/amazon0302.mtx'):
+                command = f'mkdir -p ./snap && cd ./snap && source ../downloadSNAP.sh'
+                result = subprocess.run(command, cwd=f'{srcDir}/data', shell=True)
+                assert result.returncode == 0
+
+        elif basename == 'rsmt-cuda':
+            if not os.path.isfile(f'{srcDir}/newblue7.kraftwerk70.3d.80.20.82.m8.gr'):
+                command = f'wget --no-check-certificate http://www.ispd.cc/contests/08/benchmark/newblue7.kraftwerk70.3d.80.20.82.m8.gr.gz'
+                result = subprocess.run(command, cwd=srcDir, shell=True)
+                assert result.returncode == 0
+
+        elif basename == 'bmf-cuda':
+            if not os.path.isfile(f'{srcDir}/data/MNIST.in'):
+                command = f'mkdir -p ./data && cd ./ data && wget --no-check-certificate https://github.com/Funatiq/cuBool/raw/refs/heads/master/data/MNIST.in'
+                result = subprocess.run(command, cwd=f'{srcDir}', shell=True)
+                assert result.returncode == 0
+
         # need to have python2 installed for this to work
         elif basename == 'heat2d-cuda':
             if not os.path.isfile(f'{srcDir}/data.txt'):
@@ -482,6 +500,8 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = 'graph.csv 10000 output'
         elif (basename == 'atomicCost-cuda'):
             target['exeArgs'] = '16 10'
+        elif (basename == 'snicit-cuda'):
+            target['exeArgs'] = '-k C -p ./dataset'
 
 
     return targets
@@ -808,7 +828,7 @@ def execute_target(target:dict, kernelName:str):
     print('executing command:', exeCommand, flush=True)
 
     # we print the stderr to the stdout for analysis
-    # 15 minute timeout for now?
+    # 5 minute timeout for now?
     # cm-cuda goes over 10 mins to run!
     try:
         # lsqt gives us zombie processes that take up GPU and do not respect the timeout
