@@ -60,18 +60,26 @@ Please ensure your system has enough storage space before continuing.
 
 ```
 git clone git@github.com:gregbolet/gpu-flopbench.git ./gpu-flopbench
+
 cd ./gpu-flopbench
+
 docker build --progress=plain -t 'gpu-flopbench' .
+
 docker run -ti --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
+
 docker exec -it gpu-flopbench-container /bin/bash
 ```
 
 Note: if you're on a **Windows Docker Desktop** host, be sure to enable the following:
 ```
 NVIDIA Control Panel >> Desktop Tab >> Enable Developer Settings (make sure it's enabled)
+
 then
+
 NVIDIA Control Panel >> Select a Task... Tree Pane >> Developer (expand section) >> Manage GPU Performance Counters >> Allow access to the GPU performance counters to all users (make sure this is enabled)
+
 then
+
 restart Docker Desktop
 ```
 
@@ -88,10 +96,19 @@ source ./runBuild.sh
 It's essentially building all the codes using our `CMakeLists.txt` file.
 Once this is done, we can start gathering CUDA kernel profiling data with the following command:
 ```
-LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=roofline-data.csv 2>&1 | tee runlog.txt
+cd ./cuda-profiling
+
+LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=profiling-data.csv 2>&1 | tee -a runlog.txt
 ```
-^ This process will take about 5-6 hours, so please have someone around to babysit in case any unexpected issues arise.
+^ This process will take about 10 hours, so please have someone around to babysit in case any unexpected issues arise.
 We tested this on our own Docker container and had no issues.
+
+### Scraping Source Codes
+
+While you wait for the performance counter data to gather, you can start with a simple scrape of the CUDA codes.
+```
+python3 simpleScrapeKernels.py --skipSASS --cudaOnly --outfile="simple-scraped-kernels.json"
+```
 
 # Solo (no Docker) Instructions
 
@@ -184,7 +201,7 @@ The internal workflow at a high level looks like the following:
 
 The `gatherData.py` script will emit a CSV file called `roofline-data.csv` containing all the benchmarking data. After each kernel is run, the data is written out to the last line of the CSV file. We encourage writing the results of the execution to a log file for later error/execution analysis. 
 
-‼️‼️This process of profiling all the codes can take a while (roughly 6-7 hours), we suggest leaving the profiling running while someone babysits in case of an unexpected error. ‼️‼️
+‼️‼️This process of profiling all the codes can take a while (roughly 10 hours), we suggest leaving the profiling running while someone babysits in case of an unexpected error. ‼️‼️
 
 
 ## Scraping the CUDA kernels

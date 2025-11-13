@@ -52,11 +52,11 @@ def setup_dirs(buildDir, srcDir):
     SRC_DIR = os.path.abspath(os.path.join(THIS_DIR, f'{srcDir}'))
     BUILD_DIR = os.path.abspath(os.path.join(THIS_DIR, f'{buildDir}'))
 
-    print('Using the following directories:')
-    print(f'ROOT_DIR     = [{ROOT_DIR}]')
-    print(f'DOWNLOAD_DIR = [{DOWNLOAD_DIR}]')
-    print(f'SRC_DIR      = [{SRC_DIR}]')
-    print(f'BUILD_DIR    = [{BUILD_DIR}]')
+    print('Using the following directories:', flush=True)
+    print(f'ROOT_DIR     = [{ROOT_DIR}]', flush=True)
+    print(f'DOWNLOAD_DIR = [{DOWNLOAD_DIR}]', flush=True)
+    print(f'SRC_DIR      = [{SRC_DIR}]', flush=True)
+    print(f'BUILD_DIR    = [{BUILD_DIR}]', flush=True)
 
     assert os.path.exists(DOWNLOAD_DIR)
     assert os.path.exists(SRC_DIR)
@@ -285,13 +285,13 @@ def download_files_for_some_targets(targets):
 
         elif basename == 'rsmt-cuda':
             if not os.path.isfile(f'{srcDir}/newblue7.kraftwerk70.3d.80.20.82.m8.gr'):
-                command = f'wget --no-check-certificate http://www.ispd.cc/contests/08/benchmark/newblue7.kraftwerk70.3d.80.20.82.m8.gr.gz'
+                command = f'wget --no-check-certificate http://www.ispd.cc/contests/08/benchmark/newblue7.kraftwerk70.3d.80.20.82.m8.gr.gz && gunzip ./newblue7.kraftwerk70.3d.80.20.82.m8.gr.gz'
                 result = subprocess.run(command, cwd=srcDir, shell=True)
                 assert result.returncode == 0
 
         elif basename == 'bmf-cuda':
             if not os.path.isfile(f'{srcDir}/data/MNIST.in'):
-                command = f'mkdir -p ./data && cd ./ data && wget --no-check-certificate https://github.com/Funatiq/cuBool/raw/refs/heads/master/data/MNIST.in'
+                command = f'mkdir -p ./data && cd ./data && wget --no-check-certificate https://github.com/Funatiq/cuBool/raw/refs/heads/master/data/MNIST.in'
                 result = subprocess.run(command, cwd=f'{srcDir}', shell=True)
                 assert result.returncode == 0
 
