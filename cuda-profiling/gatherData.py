@@ -29,31 +29,29 @@ import csv
 # these will be used globally in this program
 # mainly for consistency. They are absoule (full) paths
 DOWNLOAD_DIR = ''
-ROOT_DIR = ''
+THIS_DIR = ''
 SRC_DIR = ''
 BUILD_DIR = ''
 
 def setup_dirs(buildDir, srcDir):
     global DOWNLOAD_DIR
-    global ROOT_DIR
+    global THIS_DIR
     global SRC_DIR
     global BUILD_DIR
 
-    ROOT_DIR = os.path.abspath(f'{srcDir}/../cuda-profiling')
-    assert os.path.exists(ROOT_DIR)
+    THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+    assert os.path.exists(THIS_DIR)
 
-    DOWNLOAD_DIR = os.path.abspath(f'{ROOT_DIR}/downloads')
+    DOWNLOAD_DIR = os.path.abspath(f'{THIS_DIR}/downloads')
 
     if not os.path.exists(DOWNLOAD_DIR):
         os.mkdir(DOWNLOAD_DIR)
-
-    THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 
     SRC_DIR = os.path.abspath(os.path.join(THIS_DIR, f'{srcDir}'))
     BUILD_DIR = os.path.abspath(os.path.join(THIS_DIR, f'{buildDir}'))
 
     print('Using the following directories:', flush=True)
-    print(f'ROOT_DIR     = [{ROOT_DIR}]', flush=True)
+    print(f'THIS_DIR     = [{THIS_DIR}]', flush=True)
     print(f'DOWNLOAD_DIR = [{DOWNLOAD_DIR}]', flush=True)
     print(f'SRC_DIR      = [{SRC_DIR}]', flush=True)
     print(f'BUILD_DIR    = [{BUILD_DIR}]', flush=True)
@@ -486,8 +484,8 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = '../face-cuda/Face.pgm ../face-cuda/info.txt ../face-cuda/class.txt Output-gpu.pgm'
         elif 'srad-' in basename:
             target['exeArgs'] = '1000 0.5 502 458'
-        elif 'snicit-' in basename:
-            target['exeArgs'] = '-k C'
+        elif (basename == 'snicit-cuda'):
+            target['exeArgs'] = '-k C -p ./dataset'
         elif 'grep-' in basename:
             target['exeArgs'] = '-f ../grep-cuda/testcases/lua.lines.js.txt "\."'
         elif (basename == 'che-cuda') or (basename == 'che-omp'):
@@ -502,8 +500,6 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = 'graph.csv 10000 output'
         elif (basename == 'atomicCost-cuda'):
             target['exeArgs'] = '16 10'
-        elif (basename == 'snicit-cuda'):
-            target['exeArgs'] = '-k C -p ./dataset'
 
 
     return targets

@@ -96,19 +96,86 @@ source ./runBuild.sh
 It's essentially building all the codes using our `CMakeLists.txt` file.
 Once this is done, we can start gathering CUDA kernel profiling data with the following command:
 ```
-cd ./cuda-profiling
+cd $GPU_FLOPBENCH_ROOT/cuda-profiling
 
-LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=profiling-data.csv 2>&1 | tee -a runlog.txt
+LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/../src/prna-cuda/data_tables python3 ./gatherData.py --outfile=profiling-data.csv 2>&1 | tee -a runlog.txt
 ```
 ^ This process will take about 10 hours, so please have someone around to babysit in case any unexpected issues arise.
 We tested this on our own Docker container and had no issues.
 
-### Scraping Source Codes
+
+
+
+## Scraping Source Codes
 
 While you wait for the performance counter data to gather, you can start with a simple scrape of the CUDA codes.
 ```
-python3 simpleScrapeKernels.py --skipSASS --cudaOnly --outfile="simple-scraped-kernels.json"
+## Output file already provided -- no need to run these commands
+
+cd $GPU_FLOPBENCH_ROOT/source-scraping
+
+python3 simpleScrapeKernels.py --skipSASS --cudaOnly --outfile="simple-scraped-kernels-CUDA-only.json"
 ```
+This will generate a file called `simple-scraped-kernels-CUDA-only.json`, which is the full textual representation of each program with concatenated files.
+This means that CUDA kernels that come from the same parent program have the same source code that gets passed to an LLM.
+
+
+
+
+
+## Source Code Manual Categorization
+This part of the dataset is the human-annotated source codes (no need to run anything).
+We manually inspected each of the scraped kernels and flagged the codes for the following properties:
+
+1) Warp Divergence (i.e: conditional statements)
+2) Calling a `__device__` function
+3) Having recursion
+4) Data-dependent Warp Divergence (i.e: conditional statements that depend on data read-in or calculated at runtime)
+5) FLOP Division
+6) Calls to external libraries or functions (e.g: CCCL/CUB, cuSparse, cuFFT)
+7) Calling special math functions / intrinsics (e.g: sin/cos, `__ddiv_rd`)
+8) Having common float subexpressions (i.e: repeated calculations)
+
+If a code is flagged with any of the features 4-8, it is considered a *hard* code, that can NOT be directly statically analyzed, and thus could host hidden FLOP operations.
+We provide this manually-annotated dataset in the file: `$GPU_FLOPBENCH_ROOT/manual-code-classification/manually_classified_CUDA_kernels.json`.
+The UI for performing this classification was served through Streamlit, which allowed us to quickly get through manual kernel categorization efforts.
+The file for launching the classification UI is: `$GPU_FLOPBENCH_ROOT/manual-code-classification/manualStreamlit_classify.py`, although we prodive our already-made classifications in the `manually_classified_CUDA_kernels.json` file.
+
+### Automatic Scraping for Annotation
+In order to manually classify each of the kernels, we needed a way to automatically focus on the CUDA kernel of interest for each profiled kernel.
+We performed a step where we attempted to automatically scrape the CUDA kernel function definitions and their call path code, but given the complexity of C++, it was challenging.
+The script below produces an output file called `extracted_CUDA_kernels.json` which is the result of these efforts.
+```
+## Output file already provided -- no need to run these commands
+
+cd $GPU_FLOPBENCH_ROOT/source-scraping
+
+python3 extract_kernels.py
+```
+The main problem with this approach is that we used TreeSitter for static concrete syntax tree (CST) parsing, which made it challenging to handle all the edge cases of C++, so lots of codes were not fully scraped (e.g: missing relevant callee code, includes code from CUDA headers, includes incorrect overloaded callee function definitions).
+We end up using these scrapes in the Streamlit UI for manual annotations, where an annotator would often have to revert back to the full source code of a kernel to properly flag its features.
+
+We hope to improve this process in the future, but for now it's mostly a human-based effort. 
+Before this human-based approach, we did try to use LLMs, but they struggled to correctly extract code in many cases. Since we couldn't put much confiedence in LLMs to reliably perform this task for us, we scrapped the fully LLM-automated scraping approach.
+
+# Dataset Creation
+Now that we have the performance counter profiling data, scraped kernels, and manual annotations, we can create the dataset.
+We break the process up into two steps: (1) creation of the *easy* subset and (2) creation of the *hard* subset, where we then join the two subsets into one dataset.
+
+## *Easy* Subset Creation
+
+
+## *Hard* Subset Creation
+
+## Dataset Amalgamation
+
+
+
+
+
+
+
+
 
 # Solo (no Docker) Instructions
 
@@ -174,12 +241,12 @@ pip install -r ./requirements.txt
 ```
 NOTE: This is already done for you if you're using the supplied Dockerfile.
 
-## Gathering Roofline Data
+## Gathering Profiling Data
 
-Once all the codes are built, we can start the data collection process. We have our own script called `gatherData.py` which can be invoked to gather the roofline benchmarking data of each of the built programs.
+Once all the codes are built, we can start the data collection process. We have our own script called `gatherData.py` which can be invoked to gather the profiling data of each of the built programs.
 
 ```
-LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=roofline-data.csv 2>&1 | tee runlog.txt
+LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/src/prna-cuda/data_tables python3 ./gatherData.py --outfile=profiling-data.csv 2>&1 | tee runlog.txt
 ```
 NOTE: This command should work out-of-the-box if you built a container using our Dockerfile.
 
@@ -195,18 +262,18 @@ The internal workflow at a high level looks like the following:
 5. Correct the malformed execution arguments for some targets.
 6. Search for (and confirm) the existence of required input files for some programs. Unzip and extract any files that are zipped and came with HeCBench.
 7. Use `cuobjdump` and `cu++filt` to extract kernel names from each executable. These are used when invoking `ncu` to profile a particular kernel.
-8. Run each of the executables and gather their roofline performance data with `ncu`.
-9. Write gathered data to output `roofline-data.csv` file.
+8. Run each of the executables and gather their profiling performance data with `ncu`.
+9. Write gathered data to output `profiling-data.csv` file.
 
 
-The `gatherData.py` script will emit a CSV file called `roofline-data.csv` containing all the benchmarking data. After each kernel is run, the data is written out to the last line of the CSV file. We encourage writing the results of the execution to a log file for later error/execution analysis. 
+The `gatherData.py` script will emit a CSV file called `profiling-data.csv` containing all the benchmarking data. After each kernel is run, the data is written out to the last line of the CSV file. We encourage writing the results of the execution to a log file for later error/execution analysis. 
 
 ‼️‼️This process of profiling all the codes can take a while (roughly 10 hours), we suggest leaving the profiling running while someone babysits in case of an unexpected error. ‼️‼️
 
 
 ## Scraping the CUDA kernels
 
-Once all the roofline benchmarking data has been collected, we can go ahead and scrape the sampled targets for their CUDA/OMP kernels. We do this with a script called `analysis/simpleScrapeKernels.py`, which will do the following:
+Once all the benchmarking data has been collected, we can go ahead and scrape the sampled targets for their CUDA/OMP kernels. We do this with a script called `analysis/simpleScrapeKernels.py`, which will do the following:
 
 1. Go through all the executables in the `build` dir and extract their kernel names via `cuobjdump` or `objdump`
 2. Create a dictionary assiging to each kernel the `cat` contents of all the source files used by the target
@@ -235,28 +302,7 @@ Once we have the scraped source code, we can run the `analysis/vizAndPruneScrape
 
 Given that some codes have very long input contexts, we drop these codes from inference/testing to save on inference/training costs.
 The cap we set is at 8k tokens for now, based on an initial token count analysis done to check the max number of programs we could keep without the codes being too costly to query or verbose in tokenage.
-We essentially get to keep 50% of all the CUDA and OMP codes whose roofline values were sampled.
-
-
-## Creating the Roofline Dataset for Querying LLMs
-
-Once we have the `simple-scraped-kernels-CUDA-pruned-with-sass.json`, `simple-scraped-kernels-OMP-pruned-with-sass.json`, and `roofline-data.csv` files generated, we can create the Roofline Dataset by invoking the `dataset-gen/createTrainingDatset.ipynb` notebook to emit two files:
-
-- `train-dataset-balanced.csv` -- 80% of the sampled codes
-- `validation-dataset-balanced.csv` -- 20% of the sampled codes
-
-Each row of these CSV files contains one kernel and its scraped source code along with SASS code.
-For now we don't use the SASS code, as this is for a future effort.
-
-The notebook will go through the scraped codes and roofline performance data, performing the following actions:
-- Dropping any codes that were not scraped due to the token cutoff
-- Creating a Roofline plot of the collected data -- it's also the plot we use in the paper
-- Limits the number of times a code can appear in the dataset to once (some codes had multiple kernels that got scraped, so we only query about 1 kernel from the program)
-- Balances the dataframe to have an equal number of Bandwidth-bound (BB) and Compute-bound (CB) codes (most are BB)
--  Does an 80/20 train/validation split of the full dataset
-
-<br>
-<br>
+We essentially get to keep 50% of all the CUDA and OMP codes whose profiling values were sampled.
 
 We NOTE: depending on your GPU version/capabilities, you'll need to edit the following values in the `dataset-gen/roofline_utils.py` script:
 - `gpuName = 'NVIDIA RTX 3080'` -- name of the GPU

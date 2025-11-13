@@ -12,7 +12,7 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y wget make git gfortran libomp-18-dev libboost-all-dev clang-18 clang-tools-18 unzip && \
-    apt-get install -y imagemagick && \
+    apt-get install -y imagemagick vim && \
     wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0-linux-x86_64.sh && \
     chmod +x cmake-3.28.0-linux-x86_64.sh && \
     ./cmake-3.28.0-linux-x86_64.sh --skip-license --prefix=/usr/local && \
@@ -80,3 +80,10 @@ RUN echo 'conda activate gpu-flopbench' >> ~/.bashrc
 
 # one of the issues with a windows host is that the execute permissions are not preserved when copying files into the container
 # this is okay, and it seems like everything works fine without needing to change it.
+
+
+# set an environment variable for convenience
+ENV GPU_FLOPBENCH_ROOT=/gpu-flopbench
+
+# expose the Jupyter notebook port
+EXPOSE 8888
