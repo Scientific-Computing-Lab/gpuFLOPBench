@@ -500,6 +500,8 @@ def modify_exe_args_for_some_targets(targets:list):
             target['exeArgs'] = 'graph.csv 10000 output'
         elif (basename == 'atomicCost-cuda'):
             target['exeArgs'] = '16 10'
+        elif (basename == 'slu-cuda'):
+            target['exeArgs'] = '-i $SLU_PATH/nicslu/demo/ASIC_100k.mtx'
 
 
     return targets

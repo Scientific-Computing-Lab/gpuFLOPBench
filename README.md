@@ -98,10 +98,10 @@ Once this is done, we can start gathering CUDA kernel profiling data with the fo
 ```
 cd $GPU_FLOPBENCH_ROOT/cuda-profiling
 
-LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/../src/prna-cuda/data_tables python3 ./gatherData.py --outfile=profiling-data.csv 2>&1 | tee -a runlog.txt
+LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH DATAPATH=$PWD/../src/prna-cuda/data_tables SLU_PATH=$PWD/../src/slu-cuda/src python3 ./gatherData.py --outfile=profiling-data.csv 2>&1 | tee -a runlog.txt
 ```
-^ This process will take about 10 hours, so please have someone around to babysit in case any unexpected issues arise.
-We tested this on our own Docker container and had no issues.
+^ This process will take about 10-15 hours, so please have someone around to babysit in case any unexpected issues arise.
+We tested this on our own Docker container and had no issues, aside from timeouts for long-running codes or out-of-memory exceptions.
 
 
 
