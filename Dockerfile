@@ -12,7 +12,7 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y wget make git gfortran libomp-18-dev libboost-all-dev clang-18 clang-tools-18 unzip && \
-    apt-get install -y imagemagick vim && \
+    apt-get install -y imagemagick vim git-lfs && \
     wget https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0-linux-x86_64.sh && \
     chmod +x cmake-3.28.0-linux-x86_64.sh && \
     ./cmake-3.28.0-linux-x86_64.sh --skip-license --prefix=/usr/local && \
@@ -57,6 +57,12 @@ RUN source ~/anaconda3/bin/activate && \
 
 # Copy the source code into the container
 COPY . .
+
+# Run git-lfs pull to get large files
+RUN git lfs install && \
+    git lfs pull && \
+    git lfs fetch --all \
+    && git lfs checkout
 
 # if we are on a windows host, we need to remove the CRLF characters from all the files
 #RUN find . -type f -exec sed -i 's/\r$//' {} +
