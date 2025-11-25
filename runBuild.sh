@@ -70,3 +70,5 @@ cmake -DCMAKE_C_COMPILER=clang \
       -S../ -B./
 
 make -j20 all
+
+ls -a *-cuda > builtCUDACodes.txt

@@ -59,10 +59,10 @@ RUN source ~/anaconda3/bin/activate && \
 COPY . .
 
 # Run git-lfs pull to get large files
-RUN git lfs install && \
-    git lfs pull && \
-    git lfs fetch --all \
-    && git lfs checkout
+#RUN git lfs install && \
+#    git lfs pull && \
+#    git lfs fetch --all \
+#    && git lfs checkout
 
 # if we are on a windows host, we need to remove the CRLF characters from all the files
 #RUN find . -type f -exec sed -i 's/\r$//' {} +
