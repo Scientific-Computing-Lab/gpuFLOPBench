@@ -74,6 +74,9 @@ docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
 
 docker run -ti --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
 
+## Alternative docker run if host machine is Apple Silicon (M1/2/3/4)
+docker run -ti --name gpu-flopbench-container --platform=linux/amd64 gpu-flopbench
+
 docker exec -it gpu-flopbench-container /bin/bash
 ```
 
