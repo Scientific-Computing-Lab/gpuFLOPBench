@@ -56,6 +56,7 @@ The following is a list of steps to help you get set up and into the main bash s
 ‼️‼️
 We note that the base container image will take up about 15 GB of storage space, which then jumps to 40 GB when we build the container; once we start building codes and gathering profiling data, the disk usage will jump up to about 50 GB.
 Please ensure your system has enough storage space before continuing.
+Additional note: we provide all the sampling and code-scraping data -- therefore you can simply use a non-NVIDIA-gpu-enabled machine to run the LLM queries with our dataset.
 ‼️‼️
 
 ```
@@ -63,10 +64,13 @@ git clone git@github.com:gregbolet/gpu-flopbench.git ./gpu-flopbench
 
 cd ./gpu-flopbench
 
+# one of our code scrape files is 100MB, so we need to fetch it via Git LFS
+git lfs install && git lfs pull && git lfs fetch --all && git lfs checkout
+
 docker build --progress=plain -t 'gpu-flopbench' .
 
 ## Alternative docker build if host machine is Apple Silicon (M1/2/3/4)
-docker build --platform=linux/amd64 -t 'gpu-flopbench' .
+docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
 
 docker run -ti --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
 
