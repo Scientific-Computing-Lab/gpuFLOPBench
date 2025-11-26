@@ -53,7 +53,7 @@ RUN source ~/anaconda3/bin/activate && \
 
 RUN source ~/anaconda3/bin/activate && \
     conda activate gpu-flopbench && \
-    pwd && ls -lah && pip install -r ./requirements.txt 
+    pwd && ls -lah && pip install -r ./requirements.txt
 
 # Copy the source code into the container
 COPY . .
