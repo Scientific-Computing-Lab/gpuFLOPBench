@@ -62,25 +62,26 @@ Additional note: we provide all the sampling and code-scraping data -- therefore
 ```
 git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
 
+# we only really need the Dockerfile from the repo
 cd ./gpu-flopbench
 
-# one of our code scrape files is 100MB, so we need to fetch it via Git LFS
-git lfs install && git lfs pull && git lfs fetch --all && git lfs checkout
-
+# this takes about 10-20 minutes
 docker build --progress=plain -t 'gpu-flopbench' .
 
 ## Alternative docker build if host machine is Apple Silicon (M1/2/3/4)
 docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
 
-docker run -ti --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
+# please make sure that the Settings > Resources > Network > 'Enable Host Networking' option is enabled on Docker Desktop
+# this is so you can run and view Jupyter Notebooks
+docker run -ti --network=host --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
 
 ## Alternative docker run if host machine is Apple Silicon (M1/2/3/4)
-docker run -ti --name gpu-flopbench-container --platform=linux/amd64 gpu-flopbench
+docker run -ti --network=host --name gpu-flopbench-container --platform=linux/amd64 gpu-flopbench
 
 docker exec -it gpu-flopbench-container /bin/bash
 ```
 
-Note: if you're on a **Windows Docker Desktop** host, be sure to enable the following:
+Note: if you're on a **Windows Docker Desktop** host, be sure to enable the following for GPU access:
 ```
 NVIDIA Control Panel >> Desktop Tab >> Enable Developer Settings (make sure it's enabled)
 
