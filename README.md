@@ -60,7 +60,7 @@ Additional note: we provide all the sampling and code-scraping data -- therefore
 ‼️‼️
 
 ```
-git clone git@github.com:gregbolet/gpu-flopbench.git ./gpu-flopbench
+git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
 
 cd ./gpu-flopbench
 
