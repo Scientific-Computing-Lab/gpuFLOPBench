@@ -81,6 +81,12 @@ docker run -ti --network=host --name gpu-flopbench-container --platform=linux/am
 docker exec -it gpu-flopbench-container /bin/bash
 ```
 
+You can later start/stop the container using:
+```
+docker start gpu-flopbench-container
+docker stop gpu-flopbench-container
+```
+
 Note: if you're on a **Windows Docker Desktop** host, be sure to enable the following for GPU access:
 ```
 NVIDIA Control Panel >> Desktop Tab >> Enable Developer Settings (make sure it's enabled)
