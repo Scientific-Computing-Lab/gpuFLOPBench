@@ -59,6 +59,8 @@ Please ensure your system has enough storage space before continuing.
 Additional note: we provide all the sampling and code-scraping data -- therefore you can simply use a non-NVIDIA-gpu-enabled machine to run the LLM queries with our dataset.
 ‼️‼️
 
+### Container on NVIDIA GPU-Enabled Host
+
 ```
 git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
 
@@ -68,24 +70,38 @@ cd ./gpu-flopbench
 # this takes about 10-20 minutes
 docker build --progress=plain -t 'gpu-flopbench' .
 
-## Alternative docker build if host machine is Apple Silicon (M1/2/3/4)
-docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
-
 # please make sure that the Settings > Resources > Network > 'Enable Host Networking' option is enabled on Docker Desktop
 # this is so you can run and view Jupyter Notebooks
 docker run -ti --network=host --gpus all --name gpu-flopbench-container --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all gpu-flopbench
 
-## Alternative docker run if host machine is Apple Silicon (M1/2/3/4)
+docker exec -it gpu-flopbench-container /bin/bash
+```
+
+### Container on Macbook (Apple Silicon M1/2/3/4) -- no NVIDIA GPU
+```
+git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
+
+# we only really need the Dockerfile from the repo
+cd ./gpu-flopbench
+
+# this takes about 2 minutes on my Macbook Air M4
+docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
+
 docker run -ti --network=host --name gpu-flopbench-container --platform=linux/amd64 gpu-flopbench
 
 docker exec -it gpu-flopbench-container /bin/bash
 ```
+
+### Starting / Stopping Container
 
 You can later start/stop the container using:
 ```
 docker start gpu-flopbench-container
 docker stop gpu-flopbench-container
 ```
+The filechanges in the container will be persisted, unless you delete the container.
+
+### Windows GPU-Enabled Docker Host -- Extra Steps
 
 Note: if you're on a **Windows Docker Desktop** host, be sure to enable the following for GPU access:
 ```
@@ -99,6 +115,49 @@ then
 
 restart Docker Desktop
 ```
+
+# Steps to Run Scripts
+
+Here we explain the steps used in the individual phases of data creation and collection for this work.
+
+1) **Source Code Scraping**: In this step we perform a simple naive concatenation of all the C/C++ files for each executable in the `gpu-flopbench/src` directory.
+This same set of source codes was based off the [HeCBench Suite](https://github.com/zjin-lcf/HeCBench), where we take a focus on only the CUDA programs of the suite.
+These scraped codes are used as inputs to the LLMs that we later query asking them to predict the FLOP counts of the target CUDA kernels.
+
+2) **Program Building**: We took the HeCBench programs and built them all using a custom `CMakeLists.txt` file where we had fine control over the compiler and compilation process for each program.
+
+
+We use the NVIDIA GPU hardware performance counters to gather data about the number of FLOPs executed by each target kernel.
+
+
+## Note on Running Scripts
+
+Our repo already provides all the intermediate files that would be generated during the following steps:
+
+1) Source Code Scraping
+2) Executable Building, Kernel Extraction, Kernel Profiling
+3) Dataset Creation
+4) LLM Querying
+
+This means that you can run our same scripts to recreate results or add to the dataset, but if your system doesn't have a compatible NVIDIA GPU, you can at the very least see all our steps in deeper detail through this Docker container.
+We heavily utilize Git LFS for large data files, so you can see all our raw LLM query results through the Langgraph SQLITE logging API.
+Our LLM queries and their returned responses are stored in the 'gpu-flopbench/llm-querying/checkpoints/paper-datasets/*.sqlite' files.
+
+## Scraping Source Codes
+
+Before we can start gathering performance counter data, we need to do a source code scrape. 
+This is done because once we start trying to build/run our codes, a lot of additional files will be getting unzipped that could accidentally pollute the contexts of the scraped codes.
+
+```
+## Output file already provided -- no need to run these commands
+
+cd $GPU_FLOPBENCH_ROOT/source-scraping
+
+python3 simpleScrapeKernels.py --skipSASS --cudaOnly --outfile="simple-scraped-kernels-CUDA-only.json"
+```
+This will generate a file called `simple-scraped-kernels-CUDA-only.json`, which is the full textual representation of each program with concatenated files.
+This means that CUDA kernels that come from the same parent program have the same source code that gets passed to an LLM.
+
 
 ## Docker Data Collection Instructions (CUDA program building & profiling)
 
@@ -122,19 +181,6 @@ We tested this on our own Docker container and had no issues, aside from timeout
 
 
 
-
-## Scraping Source Codes
-
-While you wait for the performance counter data to gather, you can start with a simple scrape of the CUDA codes.
-```
-## Output file already provided -- no need to run these commands
-
-cd $GPU_FLOPBENCH_ROOT/source-scraping
-
-python3 simpleScrapeKernels.py --skipSASS --cudaOnly --outfile="simple-scraped-kernels-CUDA-only.json"
-```
-This will generate a file called `simple-scraped-kernels-CUDA-only.json`, which is the full textual representation of each program with concatenated files.
-This means that CUDA kernels that come from the same parent program have the same source code that gets passed to an LLM.
 
 
 
