@@ -46,7 +46,7 @@ For checking the build process, we include the following Github Action in the `.
 This sets up a Docker container with all the necessary programs and code to build all the HecBench codes with our CMakeLists approach.
 We also provide a `Dockerfile` so you can set up and run our code on your own system with a GPU.
 
-[![Build ALL CUDA/OMP Codes](https://github.com/gregbolet/gpu-flopbench/actions/workflows/buildAllCodesGithubAction.yml/badge.svg)](https://github.com/gregbolet/gpu-flopbench/actions/workflows/buildAllCodesGithubAction.yml)
+[![Build ALL CUDA/OMP Codes](https://github.com/Scientific-Computing-Lab/gpuFLOPBench/actions/workflows/buildAllCodesGithubAction.yml/badge.svg?branch=main)](https://github.com/Scientific-Computing-Lab/gpuFLOPBench/actions/workflows/buildAllCodesGithubAction.yml)
 
 ## Docker Setup Instructions
 
@@ -118,16 +118,37 @@ restart Docker Desktop
 
 # Steps to Run Scripts
 
-Here we explain the steps used in the individual phases of data creation and collection for this work.
+Here we explain (at a high level) the steps used in the individual phases of data creation and collection for this work.
+The later subsections of this README file explain each step in further detail.
 
 1) **Source Code Scraping**: In this step we perform a simple naive concatenation of all the C/C++ files for each executable in the `gpu-flopbench/src` directory.
 This same set of source codes was based off the [HeCBench Suite](https://github.com/zjin-lcf/HeCBench), where we take a focus on only the CUDA programs of the suite.
 These scraped codes are used as inputs to the LLMs that we later query asking them to predict the FLOP counts of the target CUDA kernels.
+In doing this scraping, we also record the command line input arguments to each executable that we run, passing these as input with the LLM query.
 
-2) **Program Building**: We took the HeCBench programs and built them all using a custom `CMakeLists.txt` file where we had fine control over the compiler and compilation process for each program.
+2) **Program Building and Kernel Extraction**: We took the HeCBench programs and built them all using a custom `CMakeLists.txt` file where we had fine control over the compiler and compilation process for each program.
+We're able to build 445 of the programs which give us a reasonable amount of variety in the types of codes we sample.
+Once all the programs are built, we execute them using the `ncu` NVIDIA profiler to record their performance counter data for each kernel we detect from the `cuobjdump` of the executables.
+We only profile the first incovation of each kernel, as profiling all the invocations takes forever, and we really only want to predict on the first.
+
+3) **Scraped Source Manual Annotation**: Given we had scraped the source codes, we wanted to differentiate the kernels that had FLOP counts which could be directly computed via static analysis (and constant propagation), and those which had implicit/indirect/hidden FLOP counts.
+These hidden FLOP counts come from code attributes such as data-dependent warp divergence, math/intrinsic functions, external library calls, and floating point division. 
+We consider these types of codes to be *hard* to predict on, as the LLMs would need to have runtime information which they are not given.
+The codes that lack these properties, we consider them to be *easy*, where an LLM (or human expert) can directly calculate the number of FLOPs performed on the invocation of the target kernel.
+We ended up creating a [Streamlit UI](https://github.com/streamlit/streamlit) to have human annotators go through each scraped source code and identify the code attributes used in each target kernel.
+This allowed us to understand the code attributes/features that the LLMs struggled the most with predicting on.
+
+4) **Dataset Creation**: Here we join the three previous steps, taking the scraped source code, performacne counter data, and manual annotations to form the dataset.
+We emit two `csv` files, corresponding to the *easy* and *hard* datasets, respectively.
+For convenience, we bundle these into a single CSV file `/gpu-flopbench/dataset-creation/gpuFLOPBench.csv`.
+
+5) **LLM Querying**: For this step, we use the created dataset to ask the LLMs to predict the FLOP count of the scraped CUDA kernels.
+We used [LangGraph](https://github.com/langchain-ai/langgraph) to make queries to the target models, where we store results in the `/gpu-flopbench/llm-querying/checkpoints` directory (about 2.3 GB of data).
 
 
-We use the NVIDIA GPU hardware performance counters to gather data about the number of FLOPs executed by each target kernel.
+
+
+
 
 
 ## Note on Running Scripts
@@ -136,14 +157,15 @@ Our repo already provides all the intermediate files that would be generated dur
 
 1) Source Code Scraping
 2) Executable Building, Kernel Extraction, Kernel Profiling
-3) Dataset Creation
-4) LLM Querying
+3) Manual Code Annotations
+4) Dataset Creation
+5) LLM Querying
 
 This means that you can run our same scripts to recreate results or add to the dataset, but if your system doesn't have a compatible NVIDIA GPU, you can at the very least see all our steps in deeper detail through this Docker container.
 We heavily utilize Git LFS for large data files, so you can see all our raw LLM query results through the Langgraph SQLITE logging API.
-Our LLM queries and their returned responses are stored in the 'gpu-flopbench/llm-querying/checkpoints/paper-datasets/*.sqlite' files.
+Our LLM queries and their returned responses are stored in the `gpu-flopbench/llm-querying/checkpoints/paper-datasets/*.sqlite` files.
 
-## Scraping Source Codes
+## Scraping Source Codes (`/gpu-flopbench/source-scraping`)
 
 Before we can start gathering performance counter data, we need to do a source code scrape. 
 This is done because once we start trying to build/run our codes, a lot of additional files will be getting unzipped that could accidentally pollute the contexts of the scraped codes.
@@ -159,7 +181,7 @@ This will generate a file called `simple-scraped-kernels-CUDA-only.json`, which 
 This means that CUDA kernels that come from the same parent program have the same source code that gets passed to an LLM.
 
 
-## Docker Data Collection Instructions (CUDA program building & profiling)
+## Docker Data Collection Instructions -- CUDA program building & profiling (`/gpu-flopbench/cuda-profiling`)
 
 Once you're in the main bash shell of the container, you should be by default in the `/gpu-flopbench` directory with a conda environment called `gpu-flopbench`. 
 We can now start building all the codes and collecting their performance counter data! 🌈😊
@@ -184,9 +206,7 @@ We tested this on our own Docker container and had no issues, aside from timeout
 
 
 
-
-
-## Source Code Manual Categorization
+## Source Code Manual Categorization (`/gpu-flopbench/manual-code-classification`)
 This part of the dataset is the human-annotated source codes (no need to run anything).
 We manually inspected each of the scraped kernels and flagged the codes for the following properties:
 
@@ -203,6 +223,8 @@ If a code is flagged with any of the features 4-8, it is considered a *hard* cod
 We provide this manually-annotated dataset in the file: `$GPU_FLOPBENCH_ROOT/manual-code-classification/manually_classified_CUDA_kernels.json`.
 The UI for performing this classification was served through Streamlit, which allowed us to quickly get through manual kernel categorization efforts.
 The file for launching the classification UI is: `$GPU_FLOPBENCH_ROOT/manual-code-classification/manualStreamlit_classify.py`, although we prodive our already-made classifications in the `manually_classified_CUDA_kernels.json` file.
+
+
 
 ### Automatic Scraping for Annotation
 In order to manually classify each of the kernels, we needed a way to automatically focus on the CUDA kernel of interest for each profiled kernel.
@@ -221,19 +243,33 @@ We end up using these scrapes in the Streamlit UI for manual annotations, where 
 We hope to improve this process in the future, but for now it's mostly a human-based effort. 
 Before this human-based approach, we did try to use LLMs, but they struggled to correctly extract code in many cases. Since we couldn't put much confiedence in LLMs to reliably perform this task for us, we scrapped the fully LLM-automated scraping approach.
 
-# Dataset Creation
+
+
+# Dataset Creation (`/gpu-flopbench/dataset-creation`)
 Now that we have the performance counter profiling data, scraped kernels, and manual annotations, we can create the dataset.
 We break the process up into two steps: (1) creation of the *easy* subset and (2) creation of the *hard* subset, where we then join the two subsets into one dataset.
+This step is reliant on Jupyter notebooks, so spin up the Jupyter server using the following command:
+```
+jupyter notebook --allow-root --no-browser --ip=0.0.0.0 --port=8888 --NotebookApp.token=''
+```
+Since we built the Docker container using the `--network=host` flag, you should be able to connect to the Jupyter server from your host machine browser at: [http://127.0.0.1:8888/tree/](http://127.0.0.1:8888/tree/)
 
 ## *Easy* Subset Creation
-
+We make the *easy* subset using the notebook called `create_easy_dataset_to_query.ipynb`, it emits a file called `kernels_to_inference_balanced_with_compile_commands.csv`.
+This file is used by the `/gpu-flopbench/llm-querying/dataset_and_llm.py` script when querying the *easy* dataset.
+The Jupyter notebook goes through the process of visualizing the dataset and shows the design decisions we took when trying to balance the dataset.
 
 ## *Hard* Subset Creation
+Similarly, the *hard* subset is made using the notebook called `create_hard_dataset_to_query.ipynb`, which emits the *hard* subset into file `hard_kernels_to_inference_unbalanced_with_compile_commands.csv`.
 
 ## Dataset Amalgamation
+For convenience of future use, we provide the script `visualize_easy_and_hard_datasets_for_paper.ipynb` which does some extra visualizations of the datasets and emits the `gpuFLOPBench.csv` file which contains the whole benchmark in one CSV file.
 
 
 
+# LLM Querying (`/gpu-flopbench/llm-querying`)
+
+Once the datasets are created, we can begin making LLM queries. 
 
 
 
@@ -243,6 +279,7 @@ We break the process up into two steps: (1) creation of the *easy* subset and (2
 # Solo (no Docker) Instructions
 
 Below is a list of instructions for reproducing what is done in the above Docker container, but instead on your own system.
+This is primarily for those that don't want any overhead in GPU profiling through a Docker container (i.e: more accurate profiling results).
 This path is laden with more unexpected complications and potentially more debugging effort, so continue at your own risk.
 A lot of the CUDA codes we built had their compilation instructions tailored to our particular system, so you may end up having to do more work to get all the codes built and running if you decide to change compiler, compiler versions, or CUDA versions.
 In future work we would like to make this process of building the codes agnostic to the system, but for now this is what we have working.
@@ -251,7 +288,7 @@ In future work we would like to make this process of building the codes agnostic
 
 Start by simply cloning our repo.
 ```
-git clone git@github.com:gregbolet/gpu-flopbench.git ./gpu-flopbench
+git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
 cd ./gpu-flopbench
 ```
 
@@ -296,13 +333,14 @@ This took a while to do, but ultimately makes the build process much easier and 
 We used Python3 (v3.11.11) for executing our Python scripts.
 The `requirements.txt` file contains all the necessary packages and their versions that should be installed prior to using any of our Python scripts.
 It is strongly advised to set up a new Conda environment to not mess up the base Python installation on your system.
+Take a look at our accompanying `Dockerfile` for all the steps to set up your environment.
 
 ```
 conda create --name "gpu-flopbench" python=3.11.11
 conda activate gpu-flopbench
 pip install -r ./requirements.txt
 ```
-NOTE: This is already done for you if you're using the supplied Dockerfile.
+NOTE: This is already done for you if you're using the supplied `Dockerfile`.
 
 ## Gathering Profiling Data
 
@@ -334,129 +372,7 @@ The `gatherData.py` script will emit a CSV file called `profiling-data.csv` cont
 ‼️‼️This process of profiling all the codes can take a while (roughly 10 hours), we suggest leaving the profiling running while someone babysits in case of an unexpected error. ‼️‼️
 
 
-## Scraping the CUDA kernels
-
-Once all the benchmarking data has been collected, we can go ahead and scrape the sampled targets for their CUDA/OMP kernels. We do this with a script called `analysis/simpleScrapeKernels.py`, which will do the following:
-
-1. Go through all the executables in the `build` dir and extract their kernel names via `cuobjdump` or `objdump`
-2. Create a dictionary assiging to each kernel the `cat` contents of all the source files used by the target
-
-Commands below:
-```
-cd ./analysis
-python3 simpleScrapeKernels.py
-```
-
-The scraped output will be a file called `simple-scraped-kernels-with-sass.json` in JSON format. 
-We particularly do this simple form of scraping because we're struggling to have a proper AST traversal script that can properly extract CUDA kernels from source. 
-This is a future step we're working on. For now, this file contains all the source files from each executable that was built in the `build` directory.
-Because this is an updated version, we include SASS code in the scrape, but these are not used in the final results of this paper.
-
-## Pruning the Scraped Kernels
-
-Once we have the scraped source code, we can run the `analysis/vizAndPruneScrapedKernels.ipynb` notebook to:
-
-- check the collected data using some histogram plots of the tokenizer token counts
-- calculate expected minimum query cost given a percentage of the dataset
-- limits the selected codes to those with 8e3 or less tokens
-- emit the following files:
-  - `../dataset-gen/simple-scraped-kernels-CUDA-pruned-with-sass.json`
-  - `../dataset-gen/simple-scraped-kernels-OMP-pruned-with-sass.json`
-
-Given that some codes have very long input contexts, we drop these codes from inference/testing to save on inference/training costs.
-The cap we set is at 8k tokens for now, based on an initial token count analysis done to check the max number of programs we could keep without the codes being too costly to query or verbose in tokenage.
-We essentially get to keep 50% of all the CUDA and OMP codes whose profiling values were sampled.
-
-We NOTE: depending on your GPU version/capabilities, you'll need to edit the following values in the `dataset-gen/roofline_utils.py` script:
-- `gpuName = 'NVIDIA RTX 3080'` -- name of the GPU
-- `baseClockHz = 1.440e9` -- base clock in units of Hertz (from vendor specs)
-- `maxBandwidthTBPerSec = 0.7603` -- Max global memory bandwidth in units of TB-per-sec (from vendor specs)
-
-[The following specs for the GPU tested in this work can be found HERE](https://www.techpowerup.com/gpu-specs/evga-rtx-3080-xc3-ultra.b8041)
-
-- `SPinstPerCyclePerSM = 128` -- number of single-precision instructions per cycle per SM
-- `DPinstPerCyclePerSM = 2` -- number of double-precision instructions per cycle per SM
-- `intInstPerCyclePerSM = 64` -- number of integer instructions per cycle per SM
-- `numSMs = 68` -- number of SMs
-- `numFMAopPerInst = 2` -- number of Fused-Multiply-Add (FMA) operations per instruction
-
-[The above numbers can be found in a CUDA programming guide arithmetic instructions table HERE](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions)
-
-These values get used in calculating operations and performance counter values, so be sure to set these correctly, otherwise the roofline plots we generate may be off.
-These values are used to calculate the exact same *theoretical performance* values reported on the GPU vendor spec websites, which we then use to make our Roofline model plots.
-
-
-## Querying the LLMs
-
-To perform this step, the following files should be present:
-- `dataset-gen/.openrouter-api-key` -- API key to LLM service provider, we used OpenRouter and Azure to query many different models (can instead use the `--apiKey` script flag)
-- `train-dataset-balanced.csv` -- The 80% of the data to query with
-- `validation-dataset-balanced.csv` -- The remaining 20% of the data to query with (gets added to the 80% data) 
-
-We invoke the `runFewShotTrials.py` script which is designed to perform both few-shot and zero-shot trials.
-Check the script source for a description of each of the input arguments that can be passed to the script. 
-Example invocations are provided below:
-
-
-Manual API key specification, along with zero-shot trials of the `o3-mini` reasoning model.
-```
-python3 ./runFewShotTrials.py --zeroShot --apiKey XXXX --modelName=openai/o3-mini
-```
-
-Use the `.openrouter-api-key` file for authentication. Query the model with each sample from the dataset for all 9 combinations of `--temps` and `--topps`.
-```
-python3 ./runFewShotTrials.py --modelName=openai/gpt-4o-mini --temps 0.3 0.4 0.5 --topps 0.2 0.3 0.4
-```
-
-We note that the script detects when a reasoning model is being used and so it doesn't explore the various combinations of `--temps` and `--topps` hyperparameters passed to the LLM. 
-
-
-## Tabulating Results
-
-Once multiple LLMs have been run through the roofline dataset, we will have multiple CSV results files like below.
-```
->> ls zero-shot-inference-results*.csv
-zero-shot-inference-results-gpt-4o-2024-11-20.csv
-zero-shot-inference-results-gpt-4o-mini-2024-07-18.csv
-zero-shot-inference-results-gpt-4o-mini.csv
-zero-shot-inference-results-o1-mini-2024-09-12.csv
-zero-shot-inference-results-o1.csv
-zero-shot-inference-results-o3-mini-high.csv
-zero-shot-inference-results-o3-mini.csv
-```
-
-We can use the `dataset-gen/tabulateAllResultCSVs.py` script to calculate the accuracy of the LLM predictions from these CSV files.
-The script prints some summary stats of the accuracy of each LLM on predicting the dataset.
-
-```
->> python3 tabulateAllResultCSVs.py --zeroShot
-...
-...
-                          Model Name  Number of Samples  Joint Acc  CUDA Acc  OMP Acc
-                        o3-mini-high                340      64.12     64.12    64.12
-                                  o1                340      64.12     64.12    64.12
-                             o3-mini                340      62.06     64.71    59.41
-                     gpt-4.5-preview                340      59.71     60.00    59.41
-                  o1-mini-2024-09-12                340      59.64     60.12    59.17
-                   gpt-4o-2024-11-20                340      52.06     52.94    51.18
-                         gpt-4o-mini                340      50.59     54.12    47.06
-              gpt-4o-mini-2024-07-18                340      50.29     55.88    44.71
-```
-
-The script also emits a file called: `dataset-gen/allResultsMetrics-zeroShot.csv` with all the tabulated results and additional metrics for comparison.
-
-## Helper Scripts 
-
-1) `dataset-gen/writeScrapedKernelWithPromptToFile.py`
-This script is mainly used as a sanity check to print the full text prompt that is used for querying an LLM.
-The prompt will include the system message and the filled-in templated prompt with source code.
-The output is written to a `.txt` file for viewing.
-
-2) `analysis/visualizeGatheredData-withLaunchData.ipynb`
-This script does some additional grid size and block size launch bounds distribution visualization based on the sampled kernels. 
-It gives us an idea of the distribution of the execution params of the codes we are sampling, along with some additional histogram plots of the sampled performances and arithmetic intensities of each kernel.
-
-## Limitations
+# Limitations
 
 1. We're not profiling all the possible kernel invocations, only the first two invocations of each kernel. There are some codes like `bitpermute-cuda` which make multiple increasing calls to its kernels, we only profile the first two.
 
@@ -465,6 +381,7 @@ It gives us an idea of the distribution of the execution params of the codes we 
 
 ### Future Features (TODO)
 These are features we would like to have, but they're not a priority at the moment because what we have so far is giving us a good amount of data.
+These also include directions we would like to move into though.
 
 - for targets with multiple `run` makefile invocations, store all to invocations run (instead of just the first)
 - support for weird precisions? -- what CUDA counters do we need?
@@ -476,7 +393,9 @@ These are features we would like to have, but they're not a priority at the mome
 - figure out why some programs are having memory allocation issues (can we give different input?)
 - Switch performance counter Python reading interface to use [`ncu_report`](https://docs.nvidia.com/nsight-compute/PythonReportInterface/index.html)
 - Use `tree-sitter` to scrape CUDA kernels instead of using whole source codes
-- Implement a smarter way fo detecting if an LLM is reasoning-based or not
 - For some weird reason, none of the APIs we use return the *thoughts* of the reasoning model, we need to include this to properly diagnose why the models mispredict
 - Clean up the CMakeLists.txt logic for including files
 - Only a few codes don't have their `main(...)` included in the source scrape due to us not including source files from other source directories.
+- Our version of LangGraph and LangChain libraries became quickly outdated in the process of this research; we opted to keep our original versions as everything was working, therefore we need to update our scripts to better match the 1.0 release of LangGraph/LangChain.
+- Extend the work to predict better on hidden FLOP counts.
+- Extend the work to predict OpenMP FLOP counts (this is partly why we built with `clang`, to have one compiler do it all).
