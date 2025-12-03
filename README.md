@@ -1,4 +1,11 @@
-# Modified HeCBench for Roofline Analysis
+# *gpuFLOPBench*: Counting Without Running: Evaluating LLMs’ Reasoning About Code Complexity
+
+This repo is based off of the [HeCBench Suite](https://github.com/zjin-lcf/HeCBench), where we build, profile, and categorize all the CUDA codes to create the **gpuFLOPBench** dataset.
+This dataset is designed to test the FLOP prediction capability of state-of-the-art LLMs, where we only supply them with soure code, compiler args, and command-line input arguments, expecting the LLMs to perform constant propagation and predict the number of FLOPs a target CUDA kernel would perform.
+The querying is done with simple zero-shot prompting techniques and tool calls, without any agentic or MCP features.
+This work gives us a baseline understanding of where current SoTA models are at w.r.t GPU performance prediction from the perspective of FLOP counts.
+
+## Modified HeCBench for GPU FLOP Performance Prediction using LLMs 
 
 We took this version of HeCBench and modified it to build the CUDA and OMP codes to gather their roofline performance data.
 So far we have a large portion of the CUDA and OMP codes building without issue. We use CMake because the `autohecbench.py` was giving us trouble with easily switching out compilers and build options. There were also many issues with individual makefiles, so we decided to put all the build commands into one big `CMakeLists.txt` file for simplicity. We also wanted to create distinct phases of building and gathering data which wasn't too easy with `autohecbench.py`.
