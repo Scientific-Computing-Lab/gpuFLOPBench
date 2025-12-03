@@ -74,7 +74,7 @@ def main():
     df = hard_df_to_query if args.hardDataset else easy_df_to_query
 
     if args.sqlDBFile is None:
-        args.sqlDBFile = f'./checkpoints/{model_name_sanitized}:{prompt_type}:{provider_name}:{dataset_type}.sqlite'
+        args.sqlDBFile = f'./checkpoints/{model_name_sanitized} {prompt_type} {provider_name} {dataset_type}.sqlite'
         # print the cwd
         print(f"Current working directory: {os.getcwd()}", flush=True)
 
