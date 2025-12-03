@@ -25,7 +25,7 @@ RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 1
 RUN git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git /gpu-flopbench
 
 # get the LFS files
-RUN cd /gpu-flopbench && git checkout camera-ready && git pull && git lfs pull && git lfs fetch --all && git lfs checkout
+RUN cd /gpu-flopbench && git checkout main && git pull && git lfs pull && git lfs fetch --all && git lfs checkout
 
 # Set the working directory
 WORKDIR /gpu-flopbench
