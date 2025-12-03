@@ -270,13 +270,67 @@ For convenience of future use, we provide the script `visualize_easy_and_hard_da
 # LLM Querying (`/gpu-flopbench/llm-querying`)
 
 Once the datasets are created, we can begin making LLM queries. 
+We designed the `run_llm_queries.py` script to accept multiple input arguments to control the type of experiment you want to run.
+It is dependent on a few environment variables, depending on your LLM service provider. 
+We tested only with [OpenRouter](https://openrouter.ai/) and [Microsoft Azure AI](https://ai.azure.com/) to perform our runs.
+Before continuing, we want to note that these queries can easily cost hundreds of dollars depending on the model used.
+Feel free to interrupt the scripts as they run to check your balances and cost of queries; we provide an estimate based on current 2025 prices which you can manually update in the `io_cost.py` file.
+
+## OpenRouter Querying
+For OpenRouter querying to work, please set the following environment variable:
+```
+export OPENAI_API_KEY=sk-or-v1-b5e0bed80...
+```
+This should be the API key you get from the OpenRouter UI.
+
+Then you can run the following commands:
+```
+python3 ./run_llm_queries.py --skipConfirm --modelName openai/gpt-5-mini --numTrials 3 --verbose 2>&1 | tee -a ./gpt-5-mini-easy-simplePrompt.log
+
+python3 ./run_llm_queries.py --skipConfirm --modelName openai/gpt-5-mini --numTrials 3 --verbose --hardDataset 2>&1 | tee -a ./gpt-5-mini-hard-simplePrompt.log
+```
+The first command will do runs with the *easy* dataset, using the `gpt-5-mini` model, while the second command will use the *hard* data subset.
+The queries and outputs will be logged to the specified `*.log` file, while the full Langgraph conversations will be stored in the `./checkpoints` directory.
+This process typically takes 10+ hours for one script, so please leave it running overnight or with a babysitter.
+It is inherently serial, making one query at a time, so you could run both scripts simultaneously to cut down on wait times.
+
+There is a restart mechanism in place (in case of an unexpected crash).
+We suggest re-running the script after doing a first pass collection, this is due to the fact that sometimes the OpenRouter requests time out or completely fail and thus need to be re-run.
+
+NOTE: we set a limit on the maximum query time of 2 minutes. 
+If a model doesn't return, we consider it a failure.
+2 minutes is quite reasonable given that a user probably wouldn't wait that long for a response anyways.
+
+## Microsoft Azure Querying
+For Azure querying to work we need to supply a particular environment variable:
+```
+AZURE_OPENAI_API_KEY=...
+```
+
+We can then similarly run the *easy* and *hard* data collection scripts for `o3-mini` as follows:
+```
+python3 ./run_llm_queries.py --useAzure --api_version 2025-01-01-preview --provider_url  https://galor-m8yvytc2-swedencentral.cognitiveservices.azure.com --skipConfirm --modelName o3-mini --numTrials 3 --top_p 1.0 --temp 1.0 --verbose 2>&1 | tee -a ./o3-mini-simplePrompt-easyDataset.log
+
+python3 ./run_llm_queries.py --useAzure --api_version 2025-01-01-preview --provider_url  https://galor-m8yvytc2-swedencentral.cognitiveservices.azure.com --skipConfirm --modelName o3-mini --numTrials 3 --top_p   1.0 --temp 1.0 --verbose --hardDataset 2>&1 | tee -a ./o3-mini-simplePrompt-hardDataset.log
+```
+
+Be sure to replace the `--provider_url` with the corresponding URL from your Azure AI account.
+You will also need to provide the corresponding `--api_version` from the Azure link.
+Although the models we test above have a hard-coded `--top_p` and `--temp` arguments, these are just provided as-is so the Azure API would allow us to connect and run.
+Any other values would return invalid request errors.
+
+
+## Results Visualization / Tabulation
+
+The final results can be visualized using the `visualizeSQLResults.ipynb` notebook.
+This will calculate the Matthews Correlation Coefficient (MCC) and Mean Absolute Log Error (MALE) errors of the predictions.
+It creates the plots shown in our paper, along with varying additional visualizations that aid in data analysis.
+
+<br/><br/> <br/><br/>
 
 
 
-
-
-
-# Solo (no Docker) Instructions
+# Solo (no Docker) Building & CUDA Profiling Instructions
 
 Below is a list of instructions for reproducing what is done in the above Docker container, but instead on your own system.
 This is primarily for those that don't want any overhead in GPU profiling through a Docker container (i.e: more accurate profiling results).
