@@ -15,7 +15,7 @@ Target codes thus-far:
   
 ## Citing our Work
 
-This work was presented at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
+**This work is a continuation of our previous work** that was presented at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
 Upon having our paper accepted, we pre-published on arXiv in case people wanted to cite us.
 
 📃📃 [paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 🔗🔗
@@ -67,7 +67,7 @@ git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flo
 # we only really need the Dockerfile from the repo
 cd ./gpu-flopbench
 
-# this takes about 10-20 minutes
+# this takes about 5-15 minutes
 docker build --progress=plain -t 'gpu-flopbench' .
 
 # please make sure that the Settings > Resources > Network > 'Enable Host Networking' option is enabled on Docker Desktop
@@ -87,6 +87,7 @@ cd ./gpu-flopbench
 # this takes about 2 minutes on my Macbook Air M4
 docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
 
+# please make sure that the Settings > Resources > Network > 'Enable Host Networking' option is enabled on Docker Desktop
 docker run -ti --network=host --name gpu-flopbench-container --platform=linux/amd64 gpu-flopbench
 
 docker exec -it gpu-flopbench-container /bin/bash
