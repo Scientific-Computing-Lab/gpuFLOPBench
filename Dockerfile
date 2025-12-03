@@ -1,7 +1,5 @@
 FROM nvidia/cuda:12.6.0-devel-ubuntu24.04
 
-# ARG HOSTOS=linux 
-
 # Set non-interactive frontend for apt-get to avoid prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,19 +22,13 @@ RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 1
     update-alternatives --install /usr/bin/llvm-cxxfilt llvm-cxxfilt /usr/bin/llvm-cxxfilt-18 100
 
 # clone the repo into the container
-RUN git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git /gpu-flopbench
+RUN git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git /gpu-flopbench
 
 # get the LFS files
 RUN cd /gpu-flopbench && git checkout camera-ready && git pull && git lfs pull && git lfs fetch --all && git lfs checkout
 
 # Set the working directory
 WORKDIR /gpu-flopbench
-
-# Copy the requirements file into the container
-# COPY ./requirements.txt ./requirements.txt
-
-# if we are on a windows host, we need to remove the CRLF characters from all the files
-# RUN sed -i 's/\r$//' requirements.txt
 
 # install miniconda
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
@@ -60,39 +52,8 @@ RUN source ~/anaconda3/bin/activate && \
     conda activate gpu-flopbench && \
     pwd && ls -lah && pip install -r /gpu-flopbench/requirements.txt
 
-# Copy the source code into the container
-# COPY . .
-
-
-# Run git-lfs pull to get large files
-#RUN git lfs install && \
-#    git lfs pull && \
-#    git lfs fetch --all \
-#    && git lfs checkout
-
-# if we are on a windows host, we need to remove the CRLF characters from all the files
-#RUN find . -type f -exec sed -i 's/\r$//' {} +
-# RUN if [ "$HOSTOS" = "windows" ]; then \
-#     echo "Removing CRLF characters from files..."; \
-#     find . -type f \
-#         -not -name "*.gz" \
-#         -not -name "*.zip" \
-#         -not -name "*.rar" \
-#         -not -name "*.7z" \
-#         -not -name "*.tar" \
-#         -not -name "*.bz2" \
-#         -not -name "*.tar.*" \
-#         -exec sed -i 's/\r$//' {} +; \
-#     else \
-#     echo "HOSTOS is not windows; skipping CRLF removal."; \
-#     fi 
-
 # write out to the bashrc to source conda and activate the environment on container startup
 RUN echo 'conda activate gpu-flopbench' >> ~/.bashrc
-
-# one of the issues with a windows host is that the execute permissions are not preserved when copying files into the container
-# this is okay, and it seems like everything works fine without needing to change it.
-
 
 # set an environment variable for convenience
 ENV GPU_FLOPBENCH_ROOT=/gpu-flopbench

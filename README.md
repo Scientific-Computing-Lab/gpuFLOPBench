@@ -62,7 +62,7 @@ Additional note: we provide all the sampling and code-scraping data -- therefore
 ### Container on NVIDIA GPU-Enabled Host
 
 ```
-git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
+git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
 
 # we only really need the Dockerfile from the repo
 cd ./gpu-flopbench
@@ -79,7 +79,7 @@ docker exec -it gpu-flopbench-container /bin/bash
 
 ### Container on Macbook (Apple Silicon M1/2/3/4) -- no NVIDIA GPU
 ```
-git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
+git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopbench
 
 # we only really need the Dockerfile from the repo
 cd ./gpu-flopbench
