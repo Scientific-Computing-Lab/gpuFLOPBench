@@ -91,7 +91,7 @@ git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git ./gpu-flopben
 # we only really need the Dockerfile from the repo
 cd ./gpu-flopbench
 
-# this takes about 2 minutes on my Macbook Air M4
+# this takes about 10 minutes on my Macbook Air M4
 docker build --platform=linux/amd64 --progress=plain -t 'gpu-flopbench' .
 
 # please make sure that the Settings > Resources > Network > 'Enable Host Networking' option is enabled on Docker Desktop

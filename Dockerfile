@@ -22,7 +22,7 @@ RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 1
     update-alternatives --install /usr/bin/llvm-cxxfilt llvm-cxxfilt /usr/bin/llvm-cxxfilt-18 100
 
 # clone the repo into the container
-RUN git clone git@github.com:Scientific-Computing-Lab/gpuFLOPBench.git /gpu-flopbench
+RUN git clone https://github.com/Scientific-Computing-Lab/gpuFLOPBench.git /gpu-flopbench
 
 # get the LFS files
 RUN cd /gpu-flopbench && git checkout main && git pull && git lfs pull && git lfs fetch --all && git lfs checkout
