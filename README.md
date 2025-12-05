@@ -23,9 +23,25 @@ Target codes thus-far:
 ## Citing our Work
 
 **This work is a continuation of our previous work** that was presented at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
-Upon having our paper accepted, we pre-published on arXiv in case people wanted to cite us.
+Provided below is the arXiv link of the paper that details the results of this work. 
 
-📃📃 [paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 🔗🔗
+📃📃 [arXiv 2026 paper link here](https://arxiv.org/abs/2512.04355) 🔗🔗
+
+📜 BibTeX reference below.
+```
+@misc{bolet2025countingrunningevaluatingllms,
+      title={Counting Without Running: Evaluating LLMs' Reasoning About Code Complexity}, 
+      author={Gregory Bolet and Giorgis Georgakoudis and Konstantinos Parasyris and Harshitha Menon and Niranjan Hasabnis and Kirk W. Cameron and Gal Oren},
+      year={2025},
+      eprint={2512.04355},
+      archivePrefix={arXiv},
+      primaryClass={cs.DC},
+      url={https://arxiv.org/abs/2512.04355}, 
+}
+```
+
+
+📃📃 [HPDC 2025 AI4Sys Workshop paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 🔗🔗
 
 📜 BibTeX reference below.
 ```
