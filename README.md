@@ -25,7 +25,7 @@ Target codes thus-far:
 **This work is a continuation of our previous work** that was presented at the [HPDC 2025](https://hpdc.sci.utah.edu/2025/) [AI4Sys Workshop](https://ai4sys.github.io/).
 Provided below is the arXiv link of the paper that details the results of this work. 
 
-📃📃 [arXiv 2026 paper link here](https://arxiv.org/abs/2512.04355) 🔗🔗
+📃📃 [arXiv Dec 2025 paper link here](https://arxiv.org/abs/2512.04355) 🔗🔗
 
 📜 BibTeX reference below.
 ```
@@ -41,7 +41,7 @@ Provided below is the arXiv link of the paper that details the results of this w
 ```
 
 
-📃📃 [HPDC 2025 AI4Sys Workshop paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 🔗🔗
+📃📃 [HPDC Jul 2025 AI4Sys Workshop paper link here](https://dl.acm.org/doi/10.1145/3731545.3743645) 🔗🔗
 
 📜 BibTeX reference below.
 ```
